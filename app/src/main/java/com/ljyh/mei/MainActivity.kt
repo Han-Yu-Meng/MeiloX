@@ -1,5 +1,8 @@
 package com.ljyh.mei
 
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.union
+
 import android.content.ComponentName
 import android.content.ClipboardManager
 import android.content.Context
@@ -473,6 +476,23 @@ class MainActivity : ComponentActivity() {
                     val density = LocalDensity.current
                     val windowsInsets = WindowInsets.systemBars
                     val currentRoute = navController.currentRoute
+                    val handlesKeyboardInsets = active || currentRoute == Screen.Search.route ||
+                        currentRoute?.startsWith("${Screen.PrivateConversation.route}/") == true
+                    DisposableEffect(handlesKeyboardInsets) {
+                        val previousMode = window.attributes.softInputMode
+                        if (handlesKeyboardInsets) {
+                            window.setSoftInputMode(
+                                (previousMode and android.view.WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST.inv()) or
+                                    android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING,
+                            )
+                        }
+                        onDispose {
+                            if (handlesKeyboardInsets) window.setSoftInputMode(previousMode)
+                        }
+                    }
+                    val imeInsets = WindowInsets.ime
+                    val searchBottomInset = maxOf(with(density) { imeInsets.getBottom(this).toDp() },
+                        WindowInsets.systemBars.asPaddingValues().calculateBottomPadding())
 
                     val bottomInset by remember {
                         derivedStateOf {
@@ -839,7 +859,8 @@ class MainActivity : ComponentActivity() {
                                                 }
                                                 CompositionLocalProvider(
                                                     LocalPlayerAwareWindowInsets provides
-                                                        entryPlayerAwareWindowInsets,
+                                                        if (meiRoute.route == Screen.Search.route) entryPlayerAwareWindowInsets.union(imeInsets)
+                                                        else entryPlayerAwareWindowInsets,
                                                 ) {
                                                     navigationEntry(
                                                         route = meiRoute.route,
@@ -881,7 +902,7 @@ class MainActivity : ComponentActivity() {
                                                     modifier = Modifier
                                                         .fillMaxSize()
                                                         .padding(top = windowsInsets.asPaddingValues().calculateTopPadding())
-                                                        .padding(bottom = bottomInset + NavigationBarHeight),
+                                                        .padding(bottom = searchBottomInset + NavigationBarHeight),
                                                 )
                                             }
                                         }
@@ -913,7 +934,7 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 12.dp)
-                                        .padding(bottom = bottomInset + NavigationBarBottomMargin),
+                                        .padding(bottom = searchBottomInset + NavigationBarBottomMargin),
                                 )
                             }
                         }
