@@ -111,6 +111,10 @@ class MusicService : MediaLibraryService(),
 
     lateinit var player: StableDeckPlayer
     private lateinit var audioPlayer: AudioPlayer
+    private lateinit var systemLyricsBridge: SystemLyricsBridge
+
+    @Inject
+    lateinit var lyricManager: com.ljyh.mei.utils.lyric.LyricManager
     private lateinit var autoMixController: AutoMixController
     private lateinit var equalizerConfigurationState: EqualizerConfigurationState
     val context = this
@@ -339,6 +343,7 @@ class MusicService : MediaLibraryService(),
             .build()
 
 
+        systemLyricsBridge = SystemLyricsBridge(this, player, lyricManager, mediaSession)
         restorePlayerState()
         periodicSnapshotJob = scope.launch {
             while (true) {
@@ -667,6 +672,7 @@ class MusicService : MediaLibraryService(),
     }
 
     override fun onDestroy() {
+        if (::systemLyricsBridge.isInitialized) systemLyricsBridge.release()
         sourceRecoveryJob?.cancel()
         periodicSnapshotJob?.cancel()
         playbackSnapshotJob?.cancel()

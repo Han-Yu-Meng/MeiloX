@@ -20,9 +20,11 @@ android {
         applicationId = "com.neoruaa.meilox"
         minSdk = 33
         targetSdk = 37
-        versionCode = 10
-        versionName = "1.54.5"
+        versionCode = 11
+        versionName = "1.54.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["superlyricapi_version_name"] = "3.4"
+        manifestPlaceholders["superlyricapi_version_code"] = "34"
         ndk {
             //noinspection ChromeOsAbiSupport
             abiFilters += "arm64-v8a"
@@ -162,6 +164,8 @@ dependencies {
     // 歌词组件
     implementation(libs.lyrics.core)
     implementation(libs.lyrics.ui)
+    implementation("io.github.proify.lyricon:provider:0.1.70")
+    implementation("com.github.HChenX:SuperLyricApi:3.4")
     implementation(libs.zoomable)
     implementation(libs.timber)
     implementation(libs.compose.cloudy)

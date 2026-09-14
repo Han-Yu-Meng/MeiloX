@@ -23,6 +23,25 @@ AndroidLiquidGlass / Backdrop and is licensed under the Apache License,
 Version 2.0. Original copyright and license headers are retained where the
 reference source provides them.
 
+Lyricon Provider
+----------------
+The `io.github.proify.lyricon:provider:0.1.70` dependency and its lyric model
+are Copyright 2026 Proify, Tomakino and licensed under the Apache License,
+Version 2.0:
+https://github.com/tomakino/lyricon
+License: https://www.apache.org/licenses/LICENSE-2.0
+
+The media metadata output follows this public player integration contract:
+https://github.com/Andrea-lyz/ColorOS-Live-Lyrics-Bridge/blob/main/docs/PLAYER_INTEGRATION.md
+
+SuperLyricApi
+-------------
+The `com.github.HChenX:SuperLyricApi:3.4` dependency is Copyright (C)
+2025-2026 HChenX and licensed under the GNU Lesser General Public License,
+version 2.1 or later:
+https://github.com/HChenX/SuperLyricApi
+License: https://www.gnu.org/licenses/lgpl-2.1.html
+
 Mei
 ---
 Mei is the upstream Android project for this migration. Mei application code

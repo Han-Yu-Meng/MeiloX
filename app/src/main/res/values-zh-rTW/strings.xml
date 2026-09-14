@@ -587,4 +587,8 @@
     <string name="detail_podcast_unsubscribe">取消訂閱</string>
     <string name="detail_podcast_download_all">下載全部（%1$d 期）</string>
     <string name="detail_download_queued">已加入 %1$d 項到下載佇列</string>
+    <string name="system_lyrics_settings">歌詞分享</string>
+    <string name="system_lyrics_enabled">啟用歌詞分享</string>
+    <string name="system_lyrics_description">透過 Lyricon Provider 和 SuperLyricApi SDK 分享歌詞及播放狀態。</string>
+    <string name="system_lyrics_usage">已接入 Lyricon Provider 和 SuperLyricApi SDK。</string>
 </resources>
