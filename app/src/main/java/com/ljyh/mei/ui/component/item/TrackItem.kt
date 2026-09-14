@@ -21,9 +21,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -148,14 +145,14 @@ fun Track(
         onMoreClick?.let {
             IconButton(
                 onClick = { it(menuAnchor) },
-                modifier = Modifier.padding(start = 8.dp).size(32.dp)
+                modifier = Modifier.padding(start = 8.dp).size(44.dp)
                     .onGloballyPositioned { menuAnchor = it.boundsInWindow() }
             ) {
-                Icon(
-                    imageVector = Icons.Filled.MoreVert,
-                    contentDescription = "更多",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
+                com.ljyh.mei.ui.glass.SfIcon(
+                    symbol = com.ljyh.mei.ui.glass.SfSymbol.Ellipsis,
+                    contentDescription = androidx.compose.ui.res.stringResource(com.ljyh.mei.R.string.more_actions_title),
+                    tint = com.ljyh.mei.ui.glass.LocalGlassColors.current.content,
+                    size = 18.dp,
                 )
             }
         }

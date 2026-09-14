@@ -89,6 +89,7 @@ fun IosCascadingMenu(
     backdrop: Backdrop = LocalBlurBackdrop.current,
     headerActions: List<IosCascadingMenuItem> = emptyList(),
     onTriggerAlphaChanged: ((Float) -> Unit)? = null,
+    useAccentIcons: Boolean = true,
 ) {
     var open by remember { mutableStateOf(false) }
     var started by remember { mutableStateOf(false) }
@@ -161,6 +162,7 @@ fun IosCascadingMenu(
                     headerActions.forEach { action ->
                         MenuHeaderAction(
                             action = action,
+                            iconTint = if (action.destructive) colors.destructive else if (useAccentIcons) colors.accent else colors.content,
                             enabled = open && selectedIndex == null,
                             modifier = Modifier.weight(1f),
                             onClick = { close(action.onClick) },
@@ -185,7 +187,7 @@ fun IosCascadingMenu(
                 systemName = item.systemName,
                 destructive = item.destructive,
                 backdrop = childBackdrop,
-                iconTint = colors.accent,
+                iconTint = if (item.destructive) colors.destructive else if (useAccentIcons) colors.accent else colors.content,
                 enabled = selectedIndex == null,
                 modifier = Modifier.graphicsLayer {
                     alpha = if (selectedIndex == index) 0f else 1f - 0.58f * child.value.coerceIn(0f, 1f)
@@ -256,7 +258,8 @@ fun IosCascadingMenu(
                     IosMenuItem(
                         title = selected.title,
                         systemName = selected.systemName,
-                        iconTint = colors.accent,
+                        iconTint = if (selected.destructive) colors.destructive else if (useAccentIcons) colors.accent else colors.content,
+                        destructive = selected.destructive,
                         fontWeight = FontWeight((400 + 200 * p).roundToInt()),
                         backdrop = childBackdrop,
                         enabled = open,
@@ -295,6 +298,7 @@ private fun MenuChevron(rotation: Float, state: String) {
 @Composable
 private fun MenuHeaderAction(
     action: IosCascadingMenuItem,
+    iconTint: Color,
     enabled: Boolean,
     modifier: Modifier,
     onClick: () -> Unit,
@@ -313,7 +317,7 @@ private fun MenuHeaderAction(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
     ) {
-        action.systemName?.let { SfIcon(it, null, size = 24.dp, tint = colors.accent) }
+        action.systemName?.let { SfIcon(it, null, size = 24.dp, tint = iconTint) }
         Spacer(Modifier.height(6.dp))
         Text(action.title, style = IosTypography.subheadline, color = colors.content,
             maxLines = 1, overflow = TextOverflow.Ellipsis)

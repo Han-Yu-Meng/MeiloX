@@ -102,6 +102,7 @@ fun TrackActionMenu(
         anchorBounds = anchorBounds,
         items = items,
         headerActions = headerActions,
+        useAccentIcons = false,
         title = targetTrack.title,
         expandedDescription = stringResource(R.string.menu_expanded),
         collapsedDescription = stringResource(R.string.menu_collapsed),
