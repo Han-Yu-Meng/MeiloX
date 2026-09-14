@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.layer.GraphicsLayer
@@ -325,12 +326,31 @@ internal class GraphicsLayerBlockScope : GraphicsLayerScope {
     }
 }
 
+/** Shared color treatment for standard glass and tinted navigation controls. */
+private fun DrawScope.drawGlassSurfaceColor(
+    surfaceColor: Color,
+    prominent: Boolean,
+    isLight: Boolean,
+    brightness: Float,
+    enabled: Boolean,
+) {
+    drawRect(
+        Color.White.copy(alpha = (if (isLight) 0.16f else 0.06f) + brightness * 0.18f),
+        blendMode = BlendMode.Screen,
+    )
+    if (prominent) {
+        drawRect(surfaceColor.copy(alpha = 1f), alpha = 0.22f, blendMode = BlendMode.Hue)
+    }
+    drawRect(surfaceColor.copy(alpha = surfaceColor.alpha * if (enabled) 1f else 0.8f))
+}
+
 /** Shared outer navigation-glass material used by the expanded nav and floating controls. */
 internal fun Modifier.navigationGlassBackground(
     backdrop: Backdrop,
     shape: () -> Shape,
     containerColor: Color,
     containerAlphaMultiplier: Float = 1.25f,
+    surfaceOverlay: (DrawScope.() -> Unit)? = null,
     pressProgress: Float = 0f,
     pressProgressState: androidx.compose.runtime.State<Float>? = null,
     highlightAngle: Float = 90f,
@@ -371,11 +391,15 @@ internal fun Modifier.navigationGlassBackground(
         innerShadow = null,
         layerBlock = layerBlock,
         onDrawSurface = {
-            drawRect(
-                containerColor.copy(
-                    alpha = containerColor.alpha * containerAlphaMultiplier.coerceAtLeast(0f),
-                ),
-            )
+            if (surfaceOverlay != null) {
+                surfaceOverlay()
+            } else {
+                drawRect(
+                    containerColor.copy(
+                        alpha = containerColor.alpha * containerAlphaMultiplier.coerceAtLeast(0f),
+                    ),
+                )
+            }
         },
     )
 
@@ -432,6 +456,10 @@ fun GlassSurface(
             surfaceBackdrop,
             shapeProvider,
             containerColor,
+            emphasis,
+            isLight,
+            brightness,
+            enabled,
             navigationSurfaceAlphaMultiplier,
             pressProgressState,
             sampleBackdrop,
@@ -442,6 +470,11 @@ fun GlassSurface(
                 shape = shapeProvider,
                 containerColor = containerColor,
                 containerAlphaMultiplier = navigationSurfaceAlphaMultiplier,
+                surfaceOverlay = if (emphasis == GlassEmphasis.Prominent) {
+                    {
+                        drawGlassSurfaceColor(containerColor, true, isLight, brightness, enabled)
+                    }
+                } else null,
                 pressProgressState = pressProgressState,
                 sampleBackdrop = sampleBackdrop,
                 layerBlock = dragScaleLayerBlock,
@@ -505,23 +538,12 @@ fun GlassSurface(
                 layerBlock = dragScaleLayerBlock,
                 exportedBackdrop = exportedBackdrop,
                 onDrawSurface = {
-                    drawRect(
-                        Color.White.copy(
-                            alpha = (if (isLight) 0.16f else 0.06f) + brightness * 0.18f,
-                        ),
-                        blendMode = BlendMode.Screen,
-                    )
-                    if (emphasis == GlassEmphasis.Prominent) {
-                        drawRect(
-                            colors.prominentContainer.copy(alpha = 1f),
-                            alpha = 0.22f,
-                            blendMode = BlendMode.Hue,
-                        )
-                    }
-                    drawRect(
-                        surfaceColor.copy(
-                            alpha = surfaceColor.alpha * if (enabled) 1f else 0.8f,
-                        ),
+                    drawGlassSurfaceColor(
+                        surfaceColor = surfaceColor,
+                        prominent = emphasis == GlassEmphasis.Prominent,
+                        isLight = isLight,
+                        brightness = brightness,
+                        enabled = enabled,
                     )
                 },
             )

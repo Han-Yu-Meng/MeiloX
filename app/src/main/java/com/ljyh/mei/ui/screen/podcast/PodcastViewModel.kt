@@ -183,9 +183,39 @@ class PodcastDetailViewModel @Inject constructor(
     private val _state = MutableStateFlow(PodcastDetailUiState())
     val state = _state.asStateFlow()
     private var loadedId: Long? = null
+    private val allProgramsMutex = kotlinx.coroutines.sync.Mutex()
+    private var allProgramsCache: List<com.ljyh.mei.data.model.melox.PodcastProgram>? = null
+    private var generation = 0
+
+    /** Reads every page for search and bulk actions without disturbing scroll pagination. */
+    suspend fun allPrograms(id: Long): List<com.ljyh.mei.data.model.melox.PodcastProgram> {
+        allProgramsMutex.lock()
+        try {
+            check(loadedId == id)
+            allProgramsCache?.let { return it }
+            val version = generation
+            val detail = checkNotNull(_state.value.detail)
+            var programs = detail.programs
+            var hasMore = detail.hasMore
+            while (hasMore) {
+                val page = repository.podcastPrograms(id, offset = programs.size)
+                val merged = appendUniquePrograms(programs, page.programs)
+                check(!page.hasMore || merged.size > programs.size) { "Podcast pagination did not advance" }
+                programs = merged
+                hasMore = page.hasMore
+            }
+            if (loadedId != id || generation != version) throw kotlinx.coroutines.CancellationException("Podcast changed")
+            allProgramsCache = programs
+            return programs
+        } finally { allProgramsMutex.unlock() }
+    }
+
 
     fun load(id: Long, force: Boolean = false) {
         if (!force && loadedId == id && _state.value.detail != null) return
+        generation++
+        val requestGeneration = generation
+        allProgramsCache = null
         val changesPodcast = loadedId != id
         loadedId = id
         viewModelScope.launch {
@@ -198,12 +228,12 @@ class PodcastDetailViewModel @Inject constructor(
             )
             runCatching { repository.podcastDetail(id) }
                 .onSuccess {
-                    if (loadedId == id) {
+                    if (loadedId == id && generation == requestGeneration) {
                         _state.value = PodcastDetailUiState(isLoading = false, detail = it)
                     }
                 }
                 .onFailure { error ->
-                    if (loadedId == id) {
+                    if (loadedId == id && generation == requestGeneration) {
                         _state.value = _state.value.copy(isLoading = false, error = error.message)
                     }
                 }
@@ -214,6 +244,7 @@ class PodcastDetailViewModel @Inject constructor(
         val current = _state.value
         val detail = current.detail ?: return
         if (!detail.hasMore || current.isLoading || current.isLoadingMore) return
+        val requestGeneration = generation
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoadingMore = true, loadMoreError = null)
             runCatching {
@@ -222,7 +253,7 @@ class PodcastDetailViewModel @Inject constructor(
                     offset = detail.programs.size,
                 )
             }.onSuccess { page ->
-                if (loadedId != detail.podcast.id) return@onSuccess
+                if (loadedId != detail.podcast.id || generation != requestGeneration) return@onSuccess
                 val latest = _state.value.detail ?: return@onSuccess
                 val programs = appendUniquePrograms(latest.programs, page.programs)
                 _state.value = _state.value.copy(
@@ -235,7 +266,7 @@ class PodcastDetailViewModel @Inject constructor(
                     loadMoreError = null,
                 )
             }.onFailure { error ->
-                if (loadedId == detail.podcast.id) {
+                if (loadedId == detail.podcast.id && generation == requestGeneration) {
                     _state.value = _state.value.copy(
                         isLoadingMore = false,
                         loadMoreError = error.message,

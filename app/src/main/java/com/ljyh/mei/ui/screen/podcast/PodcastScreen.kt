@@ -28,6 +28,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import com.ljyh.mei.ui.screen.playlist.rememberDetailSelection
+import com.ljyh.mei.ui.screen.playlist.DetailSelectionToolbar
+import com.ljyh.mei.ui.screen.playlist.detailMenuItems
+import com.ljyh.mei.ui.screen.playlist.matchesPlaylistSearch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -364,140 +373,166 @@ fun PodcastDetailScreen(
     val state by viewModel.state.collectAsState()
     val navController = LocalNavController.current
     val playerConnection = LocalPlayerConnection.current
-    val bottomPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    val downloadViewModel: com.ljyh.mei.ui.screen.playlist.PlaylistViewModel = hiltViewModel()
+    val selection = rememberDetailSelection(id)
     val listState = rememberLazyListState()
     val detail = state.detail
+    var searchActive by remember(id) { mutableStateOf(false) }
+    var query by remember(id) { mutableStateOf("") }
+    var searchResults by remember(id) { mutableStateOf<List<MediaMetadata>>(emptyList()) }
+    var searching by remember(id) { mutableStateOf(false) }
+    var searchError by remember(id) { mutableStateOf<String?>(null) }
+    var pendingDownload by remember(id) { mutableStateOf<List<MediaMetadata>?>(null) }
+    var preparingDownload by remember(id) { mutableStateOf(false) }
+    val downloadPath by rememberPreference(com.ljyh.mei.constants.DownloadPathKey, com.ljyh.mei.utils.DownloadManager.getDefaultDownloadPath())
+    val downloadQuality by com.ljyh.mei.utils.rememberEnumPreference(com.ljyh.mei.constants.DownloadQualityKey, com.ljyh.mei.constants.DownloadQuality.EXHIGH)
     LaunchedEffect(id) { viewModel.load(id) }
-    LaunchedEffect(id, listState) {
+    LaunchedEffect(id, query, state.isLoading) {
+        searchError = null
+        if (query.isBlank() || state.isLoading || detail == null) {
+            searching = false
+            return@LaunchedEffect
+        }
+        searching = true
+        try {
+            kotlinx.coroutines.delay(200)
+            searchResults = viewModel.allPrograms(id).map { it.asMediaMetadata() }
+                .filter { it.matchesPlaylistSearch(query) }
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) { searchError = error.message }
+        finally { searching = false }
+    }
+    LaunchedEffect(id, listState, query) {
+        if (query.isNotBlank()) return@LaunchedEffect
         snapshotFlow {
             val layout = listState.layoutInfo
             (layout.visibleItemsInfo.lastOrNull()?.index ?: -1) to layout.totalItemsCount
         }.distinctUntilChanged().collect { (lastVisibleIndex, totalItemsCount) ->
-            if (totalItemsCount > 0 && lastVisibleIndex >= totalItemsCount - 1) {
-                viewModel.loadMore()
-            }
+            if (totalItemsCount > 0 && lastVisibleIndex >= totalItemsCount - 1) viewModel.loadMore()
         }
     }
+    val tracks = if (query.isBlank()) detail?.programs.orEmpty().map { it.asMediaMetadata() } else searchResults
+    val count = maxOf(detail?.totalCount ?: 0, detail?.podcast?.programCount ?: 0, detail?.programs?.size ?: 0)
 
-    val playPrograms: (Long?) -> Unit = playPrograms@ { startProgramId ->
-        val current = state.detail ?: return@playPrograms
-        val playable = current.programs.filter { it.mainSongId != null }
-        val startIndex = startProgramId
-            ?.let { programId -> playable.indexOfFirst { it.id == programId } }
-            ?.takeIf { it >= 0 }
-            ?: 0
-        val queueItems = playable.map { program ->
-            val song = program.asMediaMetadata().toMediaItem()
-            song.mediaId to song
-        }
-        if (queueItems.isNotEmpty()) {
-            playerConnection?.playQueue(
-                ListQueue("podcast_${current.podcast.id}", current.podcast.name, queueItems, startIndex),
-            )
+    fun download(tracks: List<MediaMetadata>, quality: com.ljyh.mei.constants.MusicQuality) {
+        scope.launch {
+            try {
+                val sources = tracks.map { it.id.toString() }.chunked(200).flatMap { ids ->
+                    val result = downloadViewModel.resolveSongUrls(ids, quality)
+                    if (result is com.ljyh.mei.data.network.Resource.Success) result.data.fullSourcesFor(ids.toSet()) else emptyList()
+                }.associateBy { it.id.toString() }
+                val songs = tracks.mapNotNull { track ->
+                    val source = sources[track.id.toString()] ?: return@mapNotNull null
+                    val url = source.url ?: return@mapNotNull null
+                    com.ljyh.mei.playback.SongDownloadInfo(
+                        songId = track.id.toString(), url = url, songTitle = track.title,
+                        songArtist = track.artists.map { it.name }, songAlbum = track.album.title,
+                        songCover = track.coverUrl, duration = track.duration,
+                        fileType = source.encodeType, quality = source.level,
+                    )
+                }
+                check(songs.isNotEmpty()) { "No downloadable programs" }
+                com.ljyh.mei.utils.DownloadManager.enqueue(
+                    context = context, songs = songs, playlistName = detail?.podcast?.name.orEmpty(),
+                    playlistId = "podcast_$id", downloadPath = downloadPath,
+                )
+                android.widget.Toast.makeText(context, context.getString(R.string.detail_download_queued, songs.size), android.widget.Toast.LENGTH_SHORT).show()
+            } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+            catch (_: Exception) { android.widget.Toast.makeText(context, R.string.load_failed, android.widget.Toast.LENGTH_SHORT).show() }
         }
     }
-
-    IosPinnedListPage(
-        title = detail?.podcast?.name.orEmpty(),
-        subtitle = detail?.podcast?.host?.nickname,
-        bottomPadding = bottomPadding,
+    fun prepareDownload(quality: com.ljyh.mei.constants.MusicQuality? = null, ids: Set<String>? = null) {
+        if (preparingDownload) return
+        preparingDownload = true
+        scope.launch {
+            try {
+                val selected = viewModel.allPrograms(id).filter { it.mainSongId != null }.map { it.asMediaMetadata() }
+                    .filter { ids == null || it.id.toString() in ids }
+                if (selected.isEmpty()) {
+                    android.widget.Toast.makeText(context, R.string.load_failed, android.widget.Toast.LENGTH_SHORT).show()
+                } else if (quality == null) pendingDownload = selected else download(selected, quality)
+            } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+            catch (_: Exception) { android.widget.Toast.makeText(context, R.string.load_failed, android.widget.Toast.LENGTH_SHORT).show() }
+            finally { preparingDownload = false }
+        }
+    }
+    DetailSelectionToolbar(selection,
+        onSelectAll = {
+            viewModel.allPrograms(id).filter { it.mainSongId != null }.map { it.asMediaMetadata() }
+                .filter { it.matchesPlaylistSearch(query) }.map { it.id.toString() }.toSet()
+        },
+        onDownload = { prepareDownload(ids = selection.ids) },
+    )
+    val menu = detailMenuItems(
+        downloadTitle = stringResource(R.string.detail_podcast_download_all, count),
+        subscriptionTitle = stringResource(if (detail?.podcast?.isSubscribed == true) R.string.detail_podcast_unsubscribe else R.string.podcast_subscribe),
+        subscribed = detail?.podcast?.isSubscribed == true,
+        onDownload = { prepareDownload(it) }, onSelect = selection::start,
+        onSubscribe = viewModel::toggleSubscription,
+        onRefresh = { selection.finish(); viewModel.load(id, true) },
+    )
+    fun play(trackId: Long? = null, shuffle: Boolean = false) {
+        val playable = detail?.programs.orEmpty().filter { it.mainSongId != null }
+        val items = playable.map { it.asMediaMetadata().toMediaItem().let { song -> song.mediaId to song } }
+        if (items.isEmpty()) return
+        val index = if (shuffle) items.indices.random() else playable.indexOfFirst { it.mainSongId == trackId }.coerceAtLeast(0)
+        playerConnection?.playQueue(ListQueue("podcast_$id", detail?.podcast?.name.orEmpty(), items, index), shuffle = shuffle)
+    }
+    com.ljyh.mei.ui.screen.playlist.CommonSongListScreen(
+        uiData = com.ljyh.mei.ui.model.UiPlaylist(
+            id = id, title = detail?.podcast?.name.orEmpty(), count = count,
+            subscriberCount = detail?.podcast?.subscriberCount ?: 0,
+            cover = detail?.podcast?.picUrl.orEmpty(), coverList = emptyList(),
+            creatorName = detail?.podcast?.host?.nickname.orEmpty(), tracks = tracks,
+            playCount = detail?.podcast?.playCount, isSubscribed = detail?.podcast?.isSubscribed == true,
+        ),
+        isLoading = (state.isLoading && detail == null) || searching,
         listState = listState,
-        showsLargeTitle = false,
-        verticalArrangement = Arrangement.spacedBy(0.dp),
-        onNavigateBack = navController::navigateUp,
-    ) {
-        when {
-            state.isLoading && detail == null -> item(key = "podcast-detail-loading") {
-                Box(Modifier.fillMaxWidth().height(620.dp)) {
-                    PlaylistShimmer()
+        headerMetadata = listOf(stringResource(R.string.podcast_program_count, count),
+            stringResource(R.string.song_wiki_play_count, (detail?.podcast?.playCount ?: 0).toString())).joinToString(" · "),
+        onPlayAll = { play() }, onShufflePlay = { play(shuffle = true) },
+        headerActionIcon = Icons.Default.Add,
+        headerActionLabel = stringResource(if (detail?.podcast?.isSubscribed == true) R.string.detail_podcast_unsubscribe else R.string.podcast_subscribe),
+        onHeaderAction = viewModel::toggleSubscription,
+        onTrackClick = { track, _ ->
+            if (selection.active) { if (track.id > 0) selection.toggle(track.id.toString()) }
+            else if (track.id > 0) {
+                // Search may return a program outside the pages loaded for scrolling.
+                val playable = if (query.isBlank()) detail?.programs.orEmpty().map { it.asMediaMetadata() } else tracks
+                val items = playable.filter { it.id > 0 }.map { it.toMediaItem().let { song -> song.mediaId to song } }
+                val index = items.indexOfFirst { it.first == track.id.toString() }.coerceAtLeast(0)
+                playerConnection?.playQueue(ListQueue("podcast_$id", detail?.podcast?.name.orEmpty(), items, index))
+            }
+        },
+        onTrackDownload = { track, quality -> if (track.id > 0) download(listOf(track), quality) },
+        detailMenu = menu, detailMenuTitle = stringResource(R.string.detail_podcast_menu),
+        selectionMode = selection.active, selectedTrackIds = selection.ids, onSelectionDone = selection::finish,
+        playlistSearchQuery = query, isPlaylistSearchActive = searchActive,
+        onPlaylistSearchQueryChange = { query = it },
+        onPlaylistSearchActiveChange = { searchActive = it; if (!it) query = "" },
+        onBack = { navController.navigateUp() },
+        footer = {
+            (searchError ?: state.error)?.let { error ->
+                item(key = "podcast-detail-error") { InlineErrorState(error) { viewModel.load(id, true) } }
+            }
+            if (query.isBlank() && (detail?.hasMore == true || state.isLoadingMore || state.loadMoreError != null)) {
+                item(key = "podcast-program-pagination") {
+                    PodcastPaginationFooter(state.loadMoreError, viewModel::loadMore)
                 }
             }
-
-            detail == null -> item(key = "podcast-detail-error") {
-                InlineErrorState(state.error) { viewModel.load(id, true) }
-            }
-
-            else -> {
-                item(key = "podcast-detail-hero") {
-                    val programCount = maxOf(
-                        detail.totalCount,
-                        detail.podcast.programCount,
-                        detail.programs.size,
-                    )
-                    val metadata = listOf(
-                        stringResource(R.string.podcast_program_count, programCount),
-                        stringResource(R.string.song_wiki_play_count, detail.podcast.playCount.toString()),
-                    ).joinToString(" · ")
-                    PlaylistHeader(
-                        title = detail.podcast.name,
-                        cover = detail.podcast.picUrl.orEmpty(),
-                        coverList = emptyList(),
-                        creator = detail.podcast.host?.nickname.orEmpty(),
-                        onPlayAll = { playPrograms(null) },
-                        actionIcon = Icons.Default.Add,
-                        actionLabel = stringResource(
-                            if (detail.podcast.isSubscribed) R.string.podcast_subscribed
-                            else R.string.podcast_subscribe,
-                        ),
-                        count = programCount,
-                        playCount = detail.podcast.playCount,
-                        subscribeCount = detail.podcast.subscriberCount,
-                        isSubscribed = detail.podcast.isSubscribed,
-                        onSubscribed = { viewModel.toggleSubscription() },
-                        metadata = metadata,
-                    )
-                }
-                state.error?.let { error ->
-                    item(key = "podcast-detail-operation-error") {
-                        Text(
-                            text = error,
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                        )
-                    }
-                }
-
-                val hasFooter = detail.hasMore || state.isLoadingMore || state.loadMoreError != null
-                itemsIndexed(
-                    items = detail.programs,
-                    key = { _, program -> "podcast-program-${program.id}" },
-                    contentType = { _, _ -> "podcast-program" },
-                ) { index, program ->
-                    PlaylistSurface(
-                        isFirst = index == 0,
-                        isLast = index == detail.programs.lastIndex && !hasFooter,
-                    ) {
-                        Track(
-                            track = program.asMediaMetadata(),
-                            index = index,
-                            onClick = { playPrograms(program.id) },
-                            onMoreClick = null,
-                        )
-                        if (index < detail.programs.lastIndex || hasFooter) {
-                            HorizontalDivider(
-                                modifier = Modifier.padding(start = 64.dp),
-                                thickness = 0.5.dp,
-                                color = LocalGlassColors.current.separator,
-                            )
-                        }
-                    }
-                }
-                if (hasFooter) {
-                    item(key = "podcast-program-pagination") {
-                        PlaylistSurface(
-                            isFirst = detail.programs.isEmpty(),
-                            isLast = true,
-                        ) {
-                            PodcastPaginationFooter(
-                                failureMessage = state.loadMoreError,
-                                onLoadMore = viewModel::loadMore,
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        },
+    )
+    pendingDownload?.let { selected ->
+        com.ljyh.mei.ui.component.DownloadConfirmDialog(
+            currentQuality = downloadQuality, downloadPath = downloadPath,
+            onDismiss = { pendingDownload = null },
+            onConfirm = { pendingDownload = null; download(selected, downloadQuality.toMusicQuality()) },
+            onGoToSettings = { pendingDownload = null; Screen.DownloadSettings.navigate(navController) },
+            onGoToDownloadManage = { pendingDownload = null; Screen.DownloadManage.navigate(navController) },
+        )
     }
 }
 

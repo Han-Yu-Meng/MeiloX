@@ -63,6 +63,7 @@ data class IosCascadingMenuItem(
     val title: String,
     val systemName: String? = null,
     val destructive: Boolean = false,
+    val separatorBefore: Boolean = false,
     val children: List<IosCascadingMenuItem> = emptyList(),
     val onClick: () -> Unit = {},
 )
@@ -87,6 +88,7 @@ fun IosCascadingMenu(
     onDismiss: () -> Unit,
     backdrop: Backdrop = LocalBlurBackdrop.current,
     headerActions: List<IosCascadingMenuItem> = emptyList(),
+    onTriggerAlphaChanged: ((Float) -> Unit)? = null,
 ) {
     var open by remember { mutableStateOf(false) }
     var started by remember { mutableStateOf(false) }
@@ -104,7 +106,13 @@ fun IosCascadingMenu(
         textMeasurer.measure(it.title, style = IosTypography.subheadline, maxLines = 1).size.width
     } ?: 0
     val windowWidth = with(density) { LocalWindowInfo.current.containerSize.width.toDp() }
-    val menuWidth = if (headerActions.isEmpty()) 238.dp else {
+    val longestRowWidth = items.maxOfOrNull {
+        textMeasurer.measure(it.title, style = IosTypography.body, maxLines = 1).size.width
+    } ?: 0
+    val menuWidth = if (headerActions.isEmpty()) {
+        maxOf(238.dp, with(density) { longestRowWidth.toDp() } + 104.dp)
+            .coerceAtMost((windowWidth - 24.dp).coerceAtLeast(1.dp))
+    } else {
         // Include both cells' inner padding and the shared menu's outer content padding.
         val requiredWidth = (with(density) { longestActionWidth.toDp() } + 32.dp) * headerActions.size + 20.dp
         maxOf(280.dp, requiredWidth + 4.dp).coerceAtMost((windowWidth - 24.dp).coerceAtLeast(1.dp))
@@ -129,12 +137,14 @@ fun IosCascadingMenu(
         expanded = open,
         onExpandedChange = { if (!it) close() },
         itemCount = items.size + headerRows,
+        heightOverride = 20.dp + 44.dp * (items.size + headerRows) + 12.dp * items.count { it.separatorBefore },
         menuWidth = menuWidth,
         backdrop = backdrop,
         externalAnchorBounds = anchorBounds,
         keepAnchorVisible = true,
         menuScale = 1f - 0.04f * child.value.coerceIn(0f, 1f),
         onMenuBoundsChanged = { menuBounds = it },
+        onMenuAlphaChanged = { onTriggerAlphaChanged?.invoke(1f - it) },
         onClosed = {
             if (started && !open) {
                 onDismiss()
@@ -163,6 +173,13 @@ fun IosCascadingMenu(
             }
         }
         items.forEachIndexed { index, item ->
+            if (item.separatorBefore) {
+                Box(Modifier.fillMaxWidth().height(12.dp).graphicsLayer {
+                    alpha = 1f - 0.58f * child.value.coerceIn(0f, 1f)
+                }, contentAlignment = Alignment.Center) {
+                    HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = colors.separator)
+                }
+            }
             IosMenuItem(
                 title = item.title,
                 systemName = item.systemName,
@@ -184,7 +201,8 @@ fun IosCascadingMenu(
                             // the pressed row's transformed screen coordinates.
                             val inset = with(density) { 10.dp.toPx() }
                             val rowHeight = with(density) { 44.dp.toPx() }
-                            val top = bounds.top + inset + rowHeight * (index + headerRows)
+                            val top = bounds.top + inset + rowHeight * (index + headerRows) +
+                                with(density) { 12.dp.toPx() } * items.take(index + 1).count { it.separatorBefore }
                             selectedBounds = Rect(
                                 bounds.left + inset, top, bounds.right - inset, top + rowHeight,
                             )

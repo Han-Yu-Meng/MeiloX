@@ -570,4 +570,21 @@
     <string name="menu_expanded">已展开</string>
     <string name="menu_collapsed">已收起</string>
     <string name="track_action_share">分享</string>
+
+    <string name="album_menu_title">专辑操作</string>
+    <string name="album_download_all">下载全部（%1$d 首）</string>
+    <string name="album_multi_select">多选</string>
+    <string name="album_subscribe">收藏专辑</string>
+    <string name="album_unsubscribe">取消收藏专辑</string>
+    <string name="album_refresh">刷新</string>
+    <string name="album_select_all">全选</string>
+    <string name="album_download_selected">开始下载</string>
+
+    <string name="detail_playlist_menu">歌单操作</string>
+    <string name="detail_playlist_subscribe">收藏歌单</string>
+    <string name="detail_playlist_unsubscribe">取消收藏歌单</string>
+    <string name="detail_podcast_menu">播客操作</string>
+    <string name="detail_podcast_unsubscribe">取消订阅</string>
+    <string name="detail_podcast_download_all">下载全部（%1$d 期）</string>
+    <string name="detail_download_queued">已添加 %1$d 项到下载队列</string>
 </resources>

@@ -853,7 +853,9 @@ fun IosPopupMenu(
     externalAnchorBounds: androidx.compose.ui.geometry.Rect? = null,
     menuWidth: androidx.compose.ui.unit.Dp = PopupMenuWidth,
     menuScale: Float = 1f,
+    heightOverride: androidx.compose.ui.unit.Dp? = null,
     onMenuBoundsChanged: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
+    onMenuAlphaChanged: ((Float) -> Unit)? = null,
     onClosed: (() -> Unit)? = null,
     anchor: @Composable (onClick: () -> Unit) -> Unit,
     content: @Composable ColumnScope.(LayerBackdrop, close: () -> Unit) -> Unit,
@@ -969,6 +971,12 @@ fun IosPopupMenu(
         }
     }
 
+    val currentAlphaCallback by androidx.compose.runtime.rememberUpdatedState(onMenuAlphaChanged)
+    LaunchedEffect(menuAlpha) {
+        androidx.compose.runtime.snapshotFlow { menuAlpha.value.coerceIn(0f, 1f) }
+            .collect { currentAlphaCallback?.invoke(it) }
+    }
+
     val anchorFadePaint = remember { Paint() }
 
     Box(modifier.onSizeChanged { anchorSize = it }) {
@@ -1004,7 +1012,8 @@ fun IosPopupMenu(
         }
         if (popupAlive && (anchorSize != IntSize.Zero || externalAnchorBounds != null)) {
             val density = androidx.compose.ui.platform.LocalDensity.current
-            val targetMenuHeightPx = with(density) { (20.dp + 44.dp * itemCount).roundToPx() }
+            val menuHeight = heightOverride ?: (20.dp + 44.dp * itemCount)
+            val targetMenuHeightPx = with(density) { menuHeight.roundToPx() }
             val targetMenuWidthPx = with(density) { menuWidth.roundToPx() }
             val horizontalInsetPx = with(density) { 12.dp.roundToPx() }
             val visualHostWidthPx = with(density) {
@@ -1013,7 +1022,7 @@ fun IosPopupMenu(
             val visualHostHeightPx = with(density) {
                 (
                     PopupMenuOvershootMarginVertical +
-                        (20.dp + 44.dp * itemCount) * PopupMenuOvershootScale
+                        menuHeight * PopupMenuOvershootScale
                 ).roundToPx()
             }
             val positionProvider = remember(
@@ -1082,6 +1091,7 @@ fun IosPopupMenu(
                             shadowAlpha = shadowAlpha.value,
                             opensAbove = opensAbove,
                             itemCount = itemCount,
+                            heightOverride = heightOverride,
                             menuScale = menuScale,
                             menuWidth = menuWidth,
                             onMenuBoundsChanged = onMenuBoundsChanged,

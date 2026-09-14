@@ -9,6 +9,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -49,6 +51,7 @@ fun Track(
     isTablet: Boolean = false,
     isPlaying: Boolean = false,
     onClick: () -> Unit,
+    selected: Boolean? = null,
     onMoreClick: ((Rect) -> Unit)?
 ) {
     var menuAnchor by remember { mutableStateOf(Rect.Zero) }
@@ -56,10 +59,18 @@ fun Track(
         modifier = Modifier
             .fillMaxWidth()
             .background(if (isPlaying) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f) else Color.Transparent)
-            .clickable { onClick() }
+            .then(if (selected == null) Modifier.clickable(onClick = onClick)
+                else Modifier.selectable(selected = selected, role = Role.Checkbox, onClick = onClick))
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (selected != null) {
+            com.ljyh.mei.ui.glass.SfIcon(
+                if (selected) "checkmark.circle.fill" else "circle", null,
+                size = 24.dp, tint = com.ljyh.mei.ui.glass.LocalGlassColors.current.content,
+            )
+            Spacer(Modifier.width(12.dp))
+        }
         // --- 1. 序号 (仅平板) ---
         if (isTablet && index != null) {
             Text(

@@ -2,7 +2,6 @@ package com.ljyh.mei.ui.screen.playlist
 
 import com.ljyh.mei.constants.MusicQuality
 
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
@@ -27,8 +26,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -83,7 +86,22 @@ fun CommonSongListScreen(
     onPlaylistSearchActiveChange: (Boolean) -> Unit = {},
     viewModel: PlaylistViewModel = hiltViewModel(),
     onShufflePlay: () -> Unit = onPlayAll,
+    detailMenu: List<com.ljyh.mei.ui.glass.IosCascadingMenuItem>? = null,
+    selectionMode: Boolean = false,
+    selectedTrackIds: Set<String> = emptySet(),
+    onSelectionDone: () -> Unit = {},
+    detailMenuTitle: String = androidx.compose.ui.res.stringResource(com.ljyh.mei.R.string.album_menu_title),
+    listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
+    headerMetadata: String? = null,
+    footer: (androidx.compose.foundation.lazy.LazyListScope.() -> Unit)? = null,
+
+
 ) {
+    var detailMenuOpen by remember { mutableStateOf(false) }
+    val detailMenuTriggerAlpha = remember { androidx.compose.runtime.mutableFloatStateOf(1f) }
+    val triggerFadePaint = remember { androidx.compose.ui.graphics.Paint() }
+
+    var detailMenuAnchor by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     val device = rememberDeviceInfo()
     val bottomPadding = LocalPlayerAwareWindowInsets.current
         .asPaddingValues()
@@ -113,12 +131,13 @@ fun CommonSongListScreen(
                 !isPlaylistSearchActive && it.isNotBlank()
             },
             showsLargeTitle = false,
-            bottomPadding = bottomPadding,
+            listState = listState,
+            bottomPadding = if (selectionMode) 84.dp else bottomPadding,
             verticalArrangement = Arrangement.spacedBy(0.dp),
-            onNavigateBack = onBack,
+            onNavigateBack = if (selectionMode) onSelectionDone else onBack,
             actions = {
                 if (onPlaylistSearchQueryChange != null) {
-                    BoxWithConstraints {
+                    BoxWithConstraints(Modifier.weight(1f, fill = false)) {
                         val colors = LocalGlassColors.current
                         val buttonSize = LocalGlassDimensions.current.iconButtonSize
                         val expandedWidth = (maxWidth - buttonSize - 8.dp)
@@ -126,15 +145,20 @@ fun CommonSongListScreen(
                         val animatedWidth by animateDpAsState(
                             targetValue = if (isPlaylistSearchActive) expandedWidth else buttonSize,
                             animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                stiffness = Spring.StiffnessMediumLow,
+                                dampingRatio = 0.78f,
+                                stiffness = if (isPlaylistSearchActive) 240f else 400f,
                             ),
                             label = "PlaylistSearchWidth",
                         )
 
+                        val searchContentAlpha by androidx.compose.animation.core.animateFloatAsState(
+                            targetValue = if (isPlaylistSearchActive) 1f else 0f,
+                            animationSpec = androidx.compose.animation.core.tween(if (isPlaylistSearchActive) 120 else 200),
+                            label = "PlaylistSearchContentAlpha",
+                        )
                         GlassSurface(
                             modifier = Modifier
-                                .width(animatedWidth.coerceIn(buttonSize, expandedWidth))
+                                .width(animatedWidth.coerceIn(buttonSize, maxWidth.coerceAtLeast(buttonSize)))
                                 .height(buttonSize),
                             shape = Capsule(),
                             onClick = if (isPlaylistSearchActive) null else {
@@ -151,14 +175,15 @@ fun CommonSongListScreen(
                                     modifier = Modifier.weight(1f),
                                     contentAlignment = Alignment.CenterStart,
                                 ) {
-                                    if (isPlaylistSearchActive) {
+                                    if (isPlaylistSearchActive || searchContentAlpha > 0f) {
                                         BasicTextField(
                                             value = playlistSearchQuery,
                                             onValueChange = onPlaylistSearchQueryChange,
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .padding(start = 16.dp)
-                                                .focusRequester(searchFocusRequester),
+                                                .focusRequester(searchFocusRequester)
+                                                .graphicsLayer { alpha = searchContentAlpha },
                                             singleLine = true,
                                             textStyle = IosTypography.body.copy(color = colors.content),
                                             cursorBrush = SolidColor(colors.accent),
@@ -198,15 +223,42 @@ fun CommonSongListScreen(
                                         ),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    SfIcon(
-                                        if (isPlaylistSearchActive) SfSymbol.Close else SfSymbol.Search,
-                                        if (isPlaylistSearchActive) "关闭歌单搜索" else "搜索歌单",
-                                        size = 20.dp,
-                                    )
+                                    androidx.compose.animation.Crossfade(
+                                        targetState = isPlaylistSearchActive,
+                                        animationSpec = androidx.compose.animation.core.tween(120),
+                                        label = "PlaylistSearchIcon",
+                                    ) { active ->
+                                        SfIcon(
+                                            if (active) SfSymbol.Close else SfSymbol.Search,
+                                            if (active) "关闭歌单搜索" else "搜索歌单",
+                                            size = 20.dp,
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
+                }
+                if (selectionMode) {
+                    GlassButton(onClick = onSelectionDone, modifier = Modifier.height(LocalGlassDimensions.current.iconButtonSize)) {
+                        Text(androidx.compose.ui.res.stringResource(com.ljyh.mei.R.string.done), color = LocalGlassColors.current.accent)
+                    }
+                } else if (detailMenu != null) {
+                    com.ljyh.mei.ui.glass.GlassIconButton(
+                        onClick = { detailMenuOpen = true },
+                        modifier = Modifier.onGloballyPositioned { detailMenuAnchor = it.boundsInWindow() }
+                            .drawWithContent {
+                                val alpha = detailMenuTriggerAlpha.floatValue
+                                if (alpha >= 1f) drawContent()
+                                else if (alpha > 0f) {
+                                    triggerFadePaint.alpha = alpha
+                                    drawContext.canvas.saveLayer(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height), triggerFadePaint)
+                                    drawContent()
+                                    drawContext.canvas.restore()
+                                }
+                            },
+                        enabled = !isLoading,
+                    ) { SfIcon(SfSymbol.Ellipsis, detailMenuTitle) }
                 }
             },
         ) {
@@ -220,6 +272,7 @@ fun CommonSongListScreen(
                 item(key = "playlist-hero") {
                     PlaylistHeader(
                         title = uiData.title,
+                        metadata = headerMetadata,
                         cover = uiData.cover,
                         coverList = uiData.coverList,
                         creator = uiData.creatorName,
@@ -241,13 +294,26 @@ fun CommonSongListScreen(
                     isTablet = device.isTablet && device.isLandscape,
                     showTableHeader = playlistTrackTableHeader,
                     onTrackClick = onTrackClick,
+                    selectionMode = selectionMode,
+                    selectedTrackIds = selectedTrackIds,
                     onMoreClick = { track, anchor -> currentOverlay = OverlayState.TrackActionMenu(track, anchor) },
                     emptyMessage = playlistSearchQuery.takeIf { it.isNotBlank() }
                         ?.let { "未找到匹配的歌曲" },
                 )
             }
+            footer?.invoke(this)
         }
 
+        if (detailMenuOpen && detailMenu != null) {
+            com.ljyh.mei.ui.glass.IosCascadingMenu(
+                anchorBounds = detailMenuAnchor, items = detailMenu,
+                title = detailMenuTitle,
+                expandedDescription = androidx.compose.ui.res.stringResource(com.ljyh.mei.R.string.menu_expanded),
+                collapsedDescription = androidx.compose.ui.res.stringResource(com.ljyh.mei.R.string.menu_collapsed),
+                onDismiss = { detailMenuOpen = false; detailMenuTriggerAlpha.floatValue = 1f },
+                onTriggerAlphaChanged = { detailMenuTriggerAlpha.floatValue = it },
+            )
+        }
         PlaylistActionOverlay(
             overlay = currentOverlay,
             isCreator = uiData.isCreator,

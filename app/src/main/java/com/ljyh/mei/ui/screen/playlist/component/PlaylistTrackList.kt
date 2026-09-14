@@ -178,6 +178,8 @@ fun LazyListScope.playlistTrackItems(
     onTrackClick: (MediaMetadata, Int) -> Unit,
     onMoreClick: (MediaMetadata, Rect) -> Unit,
     emptyMessage: String? = null,
+    selectionMode: Boolean = false,
+    selectedTrackIds: Set<String> = emptySet(),
 ) {
     val itemCount = pagingItems?.itemCount ?: staticTracks.size
     val hasAppendFooter = pagingItems?.loadState?.append.let { state ->
@@ -209,7 +211,8 @@ fun LazyListScope.playlistTrackItems(
                         index = index,
                         isTablet = isTablet,
                         onClick = { onTrackClick(track, index) },
-                        onMoreClick = { onMoreClick(track, it) },
+                        onMoreClick = if (selectionMode) null else { { onMoreClick(track, it) } },
+                        selected = if (selectionMode) track.id.toString() in selectedTrackIds else null,
                     )
                     if (index < itemCount - 1 || hasAppendFooter) {
                         HorizontalDivider(
@@ -257,7 +260,8 @@ fun LazyListScope.playlistTrackItems(
                     index = index,
                     isTablet = isTablet,
                     onClick = { onTrackClick(track, index) },
-                    onMoreClick = { onMoreClick(track, it) },
+                    onMoreClick = if (selectionMode) null else { { onMoreClick(track, it) } },
+                        selected = if (selectionMode) track.id.toString() in selectedTrackIds else null,
                 )
                 if (index < staticTracks.lastIndex) {
                     HorizontalDivider(

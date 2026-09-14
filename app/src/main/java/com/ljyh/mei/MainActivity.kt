@@ -679,7 +679,9 @@ class MainActivity : ComponentActivity() {
                             player.removeListener(listener)
                         }
                     }
+                    val selectionToolbar = remember { com.ljyh.mei.ui.local.SelectionToolbarState() }
                     CompositionLocalProvider(
+                        com.ljyh.mei.ui.local.LocalSelectionToolbar provides selectionToolbar,
                         LocalDatabase provides database,
                         LocalNavController provides navController,
                         LocalPlayerConnection provides playerConnection,
@@ -886,7 +888,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             }
-                        AnimatedMiniPlayerLayer(
+                        if (selectionToolbar.content.value == null) AnimatedMiniPlayerLayer(
                             compactProgress = compactMiniPlayerProgress,
                             state = playerBottomSheetState,
                             backdrop = bottomControlsBackdrop,
@@ -927,7 +929,7 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         AnimatedVisibility(
-                            visible = shouldAllowNavigationBar,
+                            visible = shouldAllowNavigationBar && selectionToolbar.content.value == null,
                             enter = fadeIn(),
                             exit = fadeOut(),
                             modifier = Modifier
@@ -960,6 +962,15 @@ class MainActivity : ComponentActivity() {
                                 playerBottomSheetState = playerBottomSheetState,
                                 bottomInset = bottomInset,
                             )
+                        }
+                        selectionToolbar.content.value?.let { toolbar ->
+                            Box(Modifier.align(Alignment.BottomCenter).zIndex(3f)
+                                .fillMaxWidth().padding(horizontal = 16.dp)
+                                .padding(bottom = bottomInset + NavigationBarBottomMargin)) {
+                                CompositionLocalProvider(LocalGlassBackdrop provides bottomControlsBackdrop) {
+                                    toolbar()
+                                }
+                            }
                         }
                         LaunchedEffect(recognizeClipboardLinks) {
                             if (recognizeClipboardLinks && !clipboardInspected) {

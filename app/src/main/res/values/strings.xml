@@ -571,4 +571,21 @@
     <string name="menu_expanded">Expanded</string>
     <string name="menu_collapsed">Collapsed</string>
     <string name="track_action_share">Share</string>
+
+    <string name="album_menu_title">Album actions</string>
+    <string name="album_download_all">Download all (%1$d songs)</string>
+    <string name="album_multi_select">Select songs</string>
+    <string name="album_subscribe">Save album</string>
+    <string name="album_unsubscribe">Remove album</string>
+    <string name="album_refresh">Refresh</string>
+    <string name="album_select_all">Select all</string>
+    <string name="album_download_selected">Download selected</string>
+
+    <string name="detail_playlist_menu">Playlist actions</string>
+    <string name="detail_playlist_subscribe">Save playlist</string>
+    <string name="detail_playlist_unsubscribe">Remove playlist</string>
+    <string name="detail_podcast_menu">Podcast actions</string>
+    <string name="detail_podcast_unsubscribe">Unsubscribe</string>
+    <string name="detail_podcast_download_all">Download all (%1$d episodes)</string>
+    <string name="detail_download_queued">Added %1$d items to downloads</string>
 </resources>

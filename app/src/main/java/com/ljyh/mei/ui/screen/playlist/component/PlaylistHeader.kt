@@ -35,6 +35,7 @@ import com.ljyh.mei.constants.PlaylistCoverStyleKey
 import com.ljyh.mei.ui.component.playlist.FinalPerfectCollage
 import com.ljyh.mei.ui.glass.GlassButton
 import com.ljyh.mei.ui.glass.GlassEmphasis
+import com.ljyh.mei.ui.glass.GlassSurfaceStyle
 import com.ljyh.mei.ui.glass.GlassIconButton
 import com.ljyh.mei.ui.glass.IosTypography
 import com.ljyh.mei.ui.glass.LocalGlassColors
@@ -119,11 +120,12 @@ fun PlaylistHeader(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            GlassIconButton(onClick = onShufflePlay, enabled = count > 0) {
+            GlassIconButton(onClick = onShufflePlay, enabled = count > 0, style = GlassSurfaceStyle.Navigation) {
                 SfIcon("shuffle", null, size = 24.dp, weight = FontWeight.SemiBold)
             }
             GlassButton(
                 onClick = onPlayAll,
+                style = GlassSurfaceStyle.Navigation,
                 enabled = count > 0,
                 emphasis = GlassEmphasis.Prominent,
             ) {
@@ -136,6 +138,7 @@ fun PlaylistHeader(
             }
             GlassIconButton(
                 onClick = { onSubscribed(isSubscribed) },
+                style = GlassSurfaceStyle.Navigation,
                 emphasis = if (isSubscribed) GlassEmphasis.Prominent else GlassEmphasis.Regular,
             ) {
                 SfIcon(

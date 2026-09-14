@@ -4,6 +4,7 @@ import com.ljyh.mei.constants.MusicQuality
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -72,6 +73,13 @@ fun AlbumDetailScreen(
 
     // 处理收藏失败的回滚逻辑
     LaunchedEffect(subscribeState) {
+        if (subscribeState is Resource.Success) {
+            val detail = (albumDetail as? Resource.Success)?.data?.album
+            if (detail != null) viewModel.insertAlbum(
+                com.ljyh.mei.data.model.room.AlbumEntity(detail.id, detail.name, detail.picUrl, detail.publishTime, detail.size),
+                detail.artists.map { com.ljyh.mei.data.model.room.ArtistEntity(it.id.toLong(), it.name, it.picUrl) },
+            )
+        }
         if (subscribeState is Resource.Error) {
             isSubscribed = false // 回滚
             Toast.makeText(context, "收藏失败: ${(subscribeState as Resource.Error).message}", Toast.LENGTH_SHORT).show()
@@ -128,6 +136,16 @@ fun AlbumDetailScreen(
         }
     }
 
+    var selectionMode by remember(id) { mutableStateOf(false) }
+    var selectedIds by remember(id) { mutableStateOf<Set<String>>(emptySet()) }
+    val selectionToolbar = com.ljyh.mei.ui.local.LocalSelectionToolbar.current
+    androidx.activity.compose.BackHandler(selectionMode) {
+        selectionMode = false
+        selectedIds = emptySet()
+    }
+    androidx.compose.runtime.DisposableEffect(selectionToolbar) {
+        onDispose { selectionToolbar.content.value = null }
+    }
     var isAlbumSearchActive by remember { mutableStateOf(false) }
     var albumSearchQuery by remember { mutableStateOf("") }
     val displayedUiData = remember(uiData, albumSearchQuery) {
@@ -193,14 +211,64 @@ fun AlbumDetailScreen(
         }
     }
 
-    fun handleDownload() {
-        pendingDownloadTracks = uiData.tracks
-        showDownloadDialog = true
+    val qualityTitles = listOf(
+        com.ljyh.mei.R.string.track_quality_standard, com.ljyh.mei.R.string.track_quality_high,
+        com.ljyh.mei.R.string.track_quality_lossless, com.ljyh.mei.R.string.track_quality_hires,
+        com.ljyh.mei.R.string.track_quality_surround, com.ljyh.mei.R.string.track_quality_spatial,
+        com.ljyh.mei.R.string.track_quality_master,
+    ).map { androidx.compose.ui.res.stringResource(it) }
+    fun toggleSubscription() {
+        isSubscribed = !isSubscribed
+        if (isSubscribed) viewModel.subscribeAlbum(id.toString())
+        else viewModel.unSubscribeAlbum(id.toString())
     }
-
-    fun handleTrackDownload(track: MediaMetadata) {
-        pendingDownloadTracks = listOf(track)
-        showDownloadDialog = true
+    val detailMenu = listOf(
+        com.ljyh.mei.ui.glass.IosCascadingMenuItem(
+            androidx.compose.ui.res.stringResource(com.ljyh.mei.R.string.album_download_all, uiData.tracks.size),
+            "arrow.down.circle",
+            children = MusicQuality.entries.mapIndexed { index, quality ->
+                com.ljyh.mei.ui.glass.IosCascadingMenuItem(qualityTitles[index], onClick = { doDownload(uiData.tracks, quality) })
+            },
+        ),
+        com.ljyh.mei.ui.glass.IosCascadingMenuItem(
+            androidx.compose.ui.res.stringResource(com.ljyh.mei.R.string.album_multi_select), "checklist",
+            onClick = { selectedIds = emptySet(); selectionMode = true },
+        ),
+        com.ljyh.mei.ui.glass.IosCascadingMenuItem(
+            androidx.compose.ui.res.stringResource(if (isSubscribed) com.ljyh.mei.R.string.album_unsubscribe else com.ljyh.mei.R.string.album_subscribe),
+            if (isSubscribed) "checkmark" else "plus", separatorBefore = true,
+            onClick = ::toggleSubscription,
+        ),
+        com.ljyh.mei.ui.glass.IosCascadingMenuItem(
+            androidx.compose.ui.res.stringResource(com.ljyh.mei.R.string.album_refresh), "arrow.clockwise",
+            onClick = { viewModel.getAlbumDetail(id.toString()); viewModel.isSubscribe(id) },
+        ),
+    )
+    androidx.compose.runtime.DisposableEffect(selectionMode, selectedIds, displayedUiData, downloadPath, downloadQuality) {
+        selectionToolbar.content.value = if (!selectionMode) null else {
+            {
+                androidx.compose.foundation.layout.Row(
+                    Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                ) {
+                    com.ljyh.mei.ui.glass.GlassIconButton(style = com.ljyh.mei.ui.glass.GlassSurfaceStyle.Navigation, onClick = {
+                        val visibleIds = displayedUiData.tracks.map { it.id.toString() }.toSet()
+                        selectedIds = if (visibleIds.isNotEmpty() && selectedIds.containsAll(visibleIds)) selectedIds - visibleIds else selectedIds + visibleIds
+                    }, enabled = displayedUiData.tracks.isNotEmpty()) {
+                        com.ljyh.mei.ui.glass.SfIcon("checkmark.circle", androidx.compose.ui.res.stringResource(com.ljyh.mei.R.string.album_select_all),
+                            tint = com.ljyh.mei.ui.glass.LocalGlassColors.current.accent)
+                    }
+                    com.ljyh.mei.ui.glass.GlassIconButton(style = com.ljyh.mei.ui.glass.GlassSurfaceStyle.Navigation, onClick = {
+                        pendingDownloadTracks = uiData.tracks.filter { it.id.toString() in selectedIds }
+                        showDownloadDialog = pendingDownloadTracks.isNotEmpty()
+                    }, enabled = selectedIds.isNotEmpty()) {
+                        com.ljyh.mei.ui.glass.SfIcon(com.ljyh.mei.ui.glass.SfSymbol.Download,
+                            androidx.compose.ui.res.stringResource(com.ljyh.mei.R.string.album_download_selected),
+                            tint = com.ljyh.mei.ui.glass.LocalGlassColors.current.accent)
+                    }
+                }
+            }
+        }
+        onDispose { selectionToolbar.content.value = null }
     }
 
     if (showDownloadDialog) {
@@ -257,20 +325,12 @@ fun AlbumDetailScreen(
             // 头部按钮逻辑
             headerActionIcon = if (isSubscribed) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
             headerActionLabel = if (isSubscribed) "取消收藏" else "收藏",
-            onHeaderAction = {
-                // 乐观更新
-                val newState = !isSubscribed
-                isSubscribed = newState
-
-                // 发起请求
-                if (newState) {
-                    viewModel.subscribeAlbum(uiData.id.toString())
-                } else {
-                    viewModel.unSubscribeAlbum(uiData.id.toString())
-                }
-            },
-
-            onDownload = { handleDownload() },
+            onHeaderAction = ::toggleSubscription,
+            isSubscribed = isSubscribed,
+            detailMenu = detailMenu,
+            selectionMode = selectionMode,
+            selectedTrackIds = selectedIds,
+            onSelectionDone = { selectionMode = false; selectedIds = emptySet() },
 
             onTrackDownload = { track, quality -> doDownload(listOf(track), quality) },
 
@@ -283,14 +343,19 @@ fun AlbumDetailScreen(
 
             // 点击单曲
             onTrackClick = { mediaMetadata, index ->
-                playerConnection.onTrackClicked(
-                    trackId = mediaMetadata.id.toString(),
-                    buildQueue = {
-                        val originalIndex = uiData.tracks.indexOfFirst { it.id == mediaMetadata.id }
-                            .takeIf { it >= 0 } ?: index
-                        buildListQueue(originalIndex)
-                    }
-                )
+                if (selectionMode) {
+                    val trackId = mediaMetadata.id.toString()
+                    selectedIds = if (trackId in selectedIds) selectedIds - trackId else selectedIds + trackId
+                } else {
+                    playerConnection.onTrackClicked(
+                        trackId = mediaMetadata.id.toString(),
+                        buildQueue = {
+                            val originalIndex = uiData.tracks.indexOfFirst { it.id == mediaMetadata.id }
+                                .takeIf { it >= 0 } ?: index
+                            buildListQueue(originalIndex)
+                        }
+                    )
+                }
             },
 
             playlistSearchQuery = albumSearchQuery,

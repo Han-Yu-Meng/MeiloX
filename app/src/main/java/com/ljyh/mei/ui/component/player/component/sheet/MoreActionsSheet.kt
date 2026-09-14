@@ -49,7 +49,7 @@ fun MoreActionsSheet(
                         expanded = showSortOptions,
                         onExpandedChange = { showSortOptions = it },
                         itemCount = 2,
-                        keepAnchorVisible = true,
+                        keepAnchorVisible = false,
                         anchor = { openMenu ->
                             IosSheetTopToolbarButton(
                                 onClick = openMenu,
