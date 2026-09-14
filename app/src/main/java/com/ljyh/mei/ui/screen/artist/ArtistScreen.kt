@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,6 +69,7 @@ import com.ljyh.mei.ui.component.shimmer.ShimmerHost
 import com.ljyh.mei.ui.component.shimmer.TextPlaceholder
 import com.ljyh.mei.ui.glass.GlassButton
 import com.ljyh.mei.ui.glass.GlassEmphasis
+import com.ljyh.mei.ui.glass.IosListRow
 import com.ljyh.mei.ui.glass.IosPinnedPage
 import com.ljyh.mei.ui.glass.IosTypography
 import com.ljyh.mei.ui.glass.LocalGlassColors
@@ -97,6 +99,7 @@ fun ArtistScreen(
     val followMutation by viewModel.followMutation.collectAsState()
     var isFollowed by remember(id) { mutableStateOf(false) }
     var currentOverlay by remember { mutableStateOf<OverlayState>(OverlayState.None) }
+    val onAllSongsClick = { navController.navigate("${Screen.ArtistSongs.route}/$id") }
     val artistData = (artistDetail as? Resource.Success)?.data?.data
     val isArtistUnavailable = artistDetail is Resource.Success && artistData?.artist == null
 
@@ -153,6 +156,7 @@ fun ArtistScreen(
                         if (artist != null) {
                             ArtistHeader(
                                 artist = artist,
+                                onSongsClick = onAllSongsClick,
                                 isFollowed = isFollowed,
                                 isFollowLoading = followMutation is Resource.Loading,
                                 onFollowClick = {
@@ -201,6 +205,27 @@ fun ArtistScreen(
                 }
                 is Resource.Loading -> items(5) { ShimmerHost { ListItemPlaceHolder() } }
                 is Resource.Error -> item { ErrorItem(songsResource.message) }
+            }
+
+            val songCount = artistData?.artist?.musicSize
+                ?: (artistSongs as? Resource.Success)?.data?.artist?.musicSize
+            if (songCount != null) {
+                item(key = "all-artist-songs") {
+                    IosListRow(
+                        title = stringResource(R.string.artist_all_songs_count, songCount),
+                        modifier = Modifier.padding(horizontal = 6.dp),
+                        onClick = onAllSongsClick,
+                        trailing = {
+                            SfIcon(
+                                "chevron.forward",
+                                null,
+                                modifier = Modifier.padding(start = 8.dp),
+                                size = 12.dp,
+                                tint = LocalGlassColors.current.secondaryContent,
+                            )
+                        },
+                    )
+                }
             }
 
             // --- 3. Albums ---
@@ -303,6 +328,7 @@ fun ArtistHeader(
     isFollowed: Boolean,
     isFollowLoading: Boolean,
     onFollowClick: () -> Unit,
+    onSongsClick: () -> Unit,
 ) {
     var descExpanded by remember { mutableStateOf(false) }
     val bgColor = MaterialTheme.colorScheme.background
@@ -407,7 +433,11 @@ fun ArtistHeader(
 
                 // 统计数字行
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                    StatItem(value = artist.musicSize.formatCount(), label = "单曲")
+                    StatItem(
+                        value = artist.musicSize.formatCount(),
+                        label = "单曲",
+                        modifier = Modifier.clickable(role = Role.Button, onClick = onSongsClick),
+                    )
                     StatItem(value = artist.albumSize.toString(), label = "专辑")
                     StatItem(value = artist.mvSize.toString(), label = "MV")
                 }
@@ -498,8 +528,8 @@ private fun HeroBadge(text: String) {
 // ─── Stat Item ────────────────────────────────────────────────────────────────
 
 @Composable
-private fun StatItem(value: String, label: String) {
-    Column {
+private fun StatItem(value: String, label: String, modifier: Modifier = Modifier) {
+    Column(modifier) {
         Text(
             text = value,
             style = MaterialTheme.typography.titleMedium,

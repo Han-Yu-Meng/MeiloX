@@ -26,6 +26,7 @@ import com.ljyh.mei.ui.screen.playlist.EveryDay
 import com.ljyh.mei.ui.screen.playlist.PlaylistScreen
 import com.ljyh.mei.ui.screen.search.SearchResultScreen
 import com.ljyh.mei.ui.screen.setting.AppearanceSettings
+import com.ljyh.mei.ui.screen.artist.ArtistSongsScreen
 import com.ljyh.mei.ui.screen.artist.ArtistScreen
 import com.ljyh.mei.ui.screen.main.findmusic.FindMusicScreen
 import com.ljyh.mei.ui.screen.setting.ContentsSetting
@@ -299,6 +300,13 @@ fun NavGraphBuilder.navigationBuilder(
         ArtistScreen(id = it.arguments!!.getString("id")!!)
     }
 
+    composable(
+        route = "${Screen.ArtistSongs.route}/{id}",
+        arguments = listOf(navArgument("id") { type = NavType.StringType }),
+    ) {
+        ArtistSongsScreen(id = it.arguments!!.getString("id")!!)
+    }
+
     composable(Screen.History.route) {
         HistoryScreen()
     }
@@ -434,6 +442,9 @@ fun navigationEntry(
         route.startsWith("${Screen.Album.route}/") -> {
             route.substringAfter("${Screen.Album.route}/").toLongOrNull()
                 ?.let { AlbumDetailScreen(id = it) }
+        }
+        route.startsWith("${Screen.ArtistSongs.route}/") -> {
+            ArtistSongsScreen(id = route.substringAfter("${Screen.ArtistSongs.route}/"))
         }
         route.startsWith("${Screen.Artist.route}/") -> {
             route.substringAfter("${Screen.Artist.route}/")

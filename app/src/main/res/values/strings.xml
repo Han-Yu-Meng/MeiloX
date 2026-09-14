@@ -557,4 +557,7 @@
     <string name="comment_sort_hot">Popular</string>
     <string name="comment_sort_latest">Latest</string>
     <string name="appearance_library_style">Library Style</string>
+    <string name="artist_all_songs_count">All %1$d songs</string>
+    <string name="artist_all_songs">All Songs</string>
+    <string name="artist_songs_empty">No songs available</string>
 </resources>

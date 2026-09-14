@@ -556,4 +556,7 @@
     <string name="comment_sort_hot">熱門</string>
     <string name="comment_sort_latest">最新</string>
     <string name="appearance_library_style">媒體庫樣式</string>
+    <string name="artist_all_songs_count">全部 %1$d 首歌曲</string>
+    <string name="artist_all_songs">全部歌曲</string>
+    <string name="artist_songs_empty">暫無歌曲</string>
 </resources>

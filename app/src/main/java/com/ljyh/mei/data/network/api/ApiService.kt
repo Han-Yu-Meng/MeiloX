@@ -9,6 +9,7 @@ import com.ljyh.mei.data.model.Tracks
 import com.ljyh.mei.data.model.UserAccount
 import com.ljyh.mei.data.model.UserAlbumList
 import com.ljyh.mei.data.model.UserPlaylist
+import com.ljyh.mei.data.model.api.AllArtistSongs
 import com.ljyh.mei.data.model.api.ArtistAlbum
 import com.ljyh.mei.data.model.api.ArtistDetail
 import com.ljyh.mei.data.model.api.ArtistSong
@@ -20,6 +21,7 @@ import com.ljyh.mei.data.model.api.CreatePlaylist
 import com.ljyh.mei.data.model.api.CreatePlaylistResult
 import com.ljyh.mei.data.model.api.DeletePlaylist
 import com.ljyh.mei.data.model.api.GetAlbumList
+import com.ljyh.mei.data.model.api.GetAllArtistSongs
 import com.ljyh.mei.data.model.api.GetArtistAlbum
 import com.ljyh.mei.data.model.api.GetArtistDetail
 import com.ljyh.mei.data.model.api.GetArtistSong
@@ -160,6 +162,11 @@ interface ApiService {
 
     @POST("/api/artist/albums/{id}")
     suspend fun getArtistAlbums(@Body body: GetArtistAlbum, @Path("id") id: String): ArtistAlbum
+
+    @POST("/api/v1/artist/songs")
+    suspend fun getAllArtistSongs(
+        @Body body: GetAllArtistSongs,
+    ): AllArtistSongs
 
     @POST("/api/v1/artist/{id}")
     suspend fun getArtistSongs(@Body body: GetArtistSong, @Path("id") id: String): ArtistSong
