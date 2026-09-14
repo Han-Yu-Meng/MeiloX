@@ -1,5 +1,13 @@
 package com.ljyh.mei.ui.component.item
 
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -41,8 +49,9 @@ fun Track(
     isTablet: Boolean = false,
     isPlaying: Boolean = false,
     onClick: () -> Unit,
-    onMoreClick: (() -> Unit)?
+    onMoreClick: ((Rect) -> Unit)?
 ) {
+    var menuAnchor by remember { mutableStateOf(Rect.Zero) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -127,8 +136,9 @@ fun Track(
         // --- 5. 更多按钮 ---
         onMoreClick?.let {
             IconButton(
-                onClick = it,
+                onClick = { it(menuAnchor) },
                 modifier = Modifier.padding(start = 8.dp).size(32.dp)
+                    .onGloballyPositioned { menuAnchor = it.boundsInWindow() }
             ) {
                 Icon(
                     imageVector = Icons.Filled.MoreVert,

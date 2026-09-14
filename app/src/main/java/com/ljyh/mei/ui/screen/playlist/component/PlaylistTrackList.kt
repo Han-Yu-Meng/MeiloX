@@ -1,5 +1,7 @@
 package com.ljyh.mei.ui.screen.playlist.component
 
+import androidx.compose.ui.geometry.Rect
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,7 +52,7 @@ fun PlaylistTrackList(
     isTablet: Boolean = false,
     headerContent: (@Composable () -> Unit)? = null, // 新增：可选的头部内容
     onTrackClick: (MediaMetadata, Int) -> Unit,
-    onMoreClick: (MediaMetadata) -> Unit,
+    onMoreClick: (MediaMetadata, Rect) -> Unit,
     onTrackDownload: ((MediaMetadata) -> Unit)? = null,
     lazyListState: LazyListState = rememberLazyListState(),
     contentPadding: PaddingValues = PaddingValues(0.dp),
@@ -90,7 +92,7 @@ fun PlaylistTrackList(
                             index = index,
                             isTablet = isTablet,
                             onClick = { onTrackClick(track, index) },
-                            onMoreClick = { onMoreClick(track) }
+                            onMoreClick = { onMoreClick(track, it) }
                         )
                     }
                 }
@@ -154,7 +156,7 @@ fun PlaylistTrackList(
                         index = index,
                         isTablet = isTablet,
                         onClick = { onTrackClick(track, index) },
-                        onMoreClick = { onMoreClick(track) }
+                        onMoreClick = { onMoreClick(track, it) }
                     )
                 }
             }
@@ -174,7 +176,7 @@ fun LazyListScope.playlistTrackItems(
     isTablet: Boolean,
     showTableHeader: Boolean,
     onTrackClick: (MediaMetadata, Int) -> Unit,
-    onMoreClick: (MediaMetadata) -> Unit,
+    onMoreClick: (MediaMetadata, Rect) -> Unit,
     emptyMessage: String? = null,
 ) {
     val itemCount = pagingItems?.itemCount ?: staticTracks.size
@@ -207,7 +209,7 @@ fun LazyListScope.playlistTrackItems(
                         index = index,
                         isTablet = isTablet,
                         onClick = { onTrackClick(track, index) },
-                        onMoreClick = { onMoreClick(track) },
+                        onMoreClick = { onMoreClick(track, it) },
                     )
                     if (index < itemCount - 1 || hasAppendFooter) {
                         HorizontalDivider(
@@ -255,7 +257,7 @@ fun LazyListScope.playlistTrackItems(
                     index = index,
                     isTablet = isTablet,
                     onClick = { onTrackClick(track, index) },
-                    onMoreClick = { onMoreClick(track) },
+                    onMoreClick = { onMoreClick(track, it) },
                 )
                 if (index < staticTracks.lastIndex) {
                     HorizontalDivider(

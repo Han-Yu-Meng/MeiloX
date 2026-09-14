@@ -1,5 +1,7 @@
 package com.ljyh.mei.ui.screen.local
 
+import androidx.compose.ui.geometry.Rect
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -106,6 +108,8 @@ fun LocalSongListScreen(
     val tracks: List<MediaMetadata> = remember(songs) {
         songs.map { it.toMediaMetadata() }
     }
+    var actionAnchor by remember { mutableStateOf<Rect?>(null) }
+    var shareTrack by remember { mutableStateOf<MediaMetadata?>(null) }
     var actionTrack by remember { mutableStateOf<MediaMetadata?>(null) }
     val coverUrl = remember(songs) {
         songs.firstOrNull { it.cover.isNotEmpty() }?.cover
@@ -181,7 +185,7 @@ fun LocalSongListScreen(
                                     )
                                 }
                             },
-                            onMoreClick = { actionTrack = it }
+                            onMoreClick = { track, anchor -> actionTrack = track; actionAnchor = anchor }
                         )
                     }
                 } else {
@@ -208,7 +212,7 @@ fun LocalSongListScreen(
                                 )
                             }
                         },
-                        onMoreClick = { actionTrack = it },
+                        onMoreClick = { track, anchor -> actionTrack = track; actionAnchor = anchor },
                         contentPadding = PaddingValues(
                             bottom = LocalPlayerAwareWindowInsets.current.asPaddingValues()
                                 .calculateBottomPadding()
@@ -218,9 +222,17 @@ fun LocalSongListScreen(
             }
         }
 
+        shareTrack?.let { track ->
+            com.ljyh.mei.ui.screen.social.NeteaseShareSheet(
+                metadata = track,
+                onDismiss = { shareTrack = null },
+            )
+        }
         actionTrack?.let { track ->
             TrackActionMenu(
                 targetTrack = track,
+                anchorBounds = actionAnchor,
+                onShare = { shareTrack = track },
                 onDismiss = { actionTrack = null },
                 onCopyId = { setClipboard(context, track.id.toString(), "id") },
                 onCopyName = { setClipboard(context, track.title, "name") },

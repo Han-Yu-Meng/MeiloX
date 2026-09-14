@@ -559,4 +559,15 @@
     <string name="artist_all_songs_count">全部 %1$d 首歌曲</string>
     <string name="artist_all_songs">全部歌曲</string>
     <string name="artist_songs_empty">暂无歌曲</string>
+    <string name="track_action_download_song">下载歌曲</string>
+    <string name="track_quality_standard">标准</string>
+    <string name="track_quality_high">高品质</string>
+    <string name="track_quality_lossless">无损</string>
+    <string name="track_quality_hires">Hi-Res</string>
+    <string name="track_quality_surround">高清环绕声</string>
+    <string name="track_quality_spatial">沉浸环绕声</string>
+    <string name="track_quality_master">超清母带</string>
+    <string name="menu_expanded">已展开</string>
+    <string name="menu_collapsed">已收起</string>
+    <string name="track_action_share">分享</string>
 </resources>

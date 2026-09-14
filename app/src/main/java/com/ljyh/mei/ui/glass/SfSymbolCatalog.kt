@@ -202,6 +202,7 @@ internal object SfSymbolCatalog {
         "square" to 0x100092,
         "square.3.layers.3d" to 0x100BF0,
         "square.and.arrow.up" to 0x100202,
+        "square.and.arrow.up.fill" to 0x100203,
         "square.and.pencil" to 0x10020E,
         "square.on.circle" to 0x100409,
         "square.on.square" to 0x100405,

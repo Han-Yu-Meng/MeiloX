@@ -237,9 +237,9 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun downloadSong(metadata: MediaMetadata, context: android.content.Context) {
+    fun downloadSong(metadata: MediaMetadata, context: android.content.Context, requestedQuality: MusicQuality? = null) {
         viewModelScope.launch {
-            val quality = try {
+            val quality = requestedQuality ?: try {
                 val saved = AppContext.instance.dataStore[DownloadQualityKey]
                 if (saved != null) com.ljyh.mei.constants.DownloadQuality.valueOf(saved).toMusicQuality()
                 else MusicQuality.EXHIGH

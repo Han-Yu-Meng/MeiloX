@@ -1,5 +1,7 @@
 package com.ljyh.mei.ui.screen.playlist
 
+import com.ljyh.mei.constants.MusicQuality
+
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
@@ -73,7 +75,7 @@ fun CommonSongListScreen(
     headerActionLabel: String,
     isSubscribed: Boolean = uiData.isSubscribed,
     onTrackClick: (MediaMetadata, Int) -> Unit,
-    onTrackDownload: ((MediaMetadata) -> Unit)? = null,
+    onTrackDownload: ((MediaMetadata, MusicQuality) -> Unit)? = null,
     onBack: () -> Unit,
     playlistSearchQuery: String = "",
     isPlaylistSearchActive: Boolean = false,
@@ -239,7 +241,7 @@ fun CommonSongListScreen(
                     isTablet = device.isTablet && device.isLandscape,
                     showTableHeader = playlistTrackTableHeader,
                     onTrackClick = onTrackClick,
-                    onMoreClick = { currentOverlay = OverlayState.TrackActionMenu(it) },
+                    onMoreClick = { track, anchor -> currentOverlay = OverlayState.TrackActionMenu(track, anchor) },
                     emptyMessage = playlistSearchQuery.takeIf { it.isNotBlank() }
                         ?.let { "未找到匹配的歌曲" },
                 )

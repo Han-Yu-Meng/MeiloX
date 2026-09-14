@@ -1,5 +1,7 @@
 package com.ljyh.mei.ui.screen.album
 
+import com.ljyh.mei.constants.MusicQuality
+
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -144,10 +146,10 @@ fun AlbumDetailScreen(
     val (downloadQuality) = rememberEnumPreference(DownloadQualityKey, DownloadQuality.EXHIGH)
 
     // 5. 下载处理逻辑
-    fun doDownload(tracks: List<MediaMetadata>) {
+    fun doDownload(tracks: List<MediaMetadata>, quality: MusicQuality = downloadQuality.toMusicQuality()) {
         scope.launch {
             val songIds = tracks.map { it.id.toString() }
-            val result = viewModel.resolveSongUrls(songIds, downloadQuality.toMusicQuality())
+            val result = viewModel.resolveSongUrls(songIds, quality)
             val sourceMap = if (result is Resource.Success) {
                 result.data.fullSourcesFor(songIds.toSet()).associateBy { it.id.toString() }
             } else emptyMap()
@@ -270,7 +272,7 @@ fun AlbumDetailScreen(
 
             onDownload = { handleDownload() },
 
-            onTrackDownload = { track -> handleTrackDownload(track) },
+            onTrackDownload = { track, quality -> doDownload(listOf(track), quality) },
 
             // 播放全部
             onPlayAll = {

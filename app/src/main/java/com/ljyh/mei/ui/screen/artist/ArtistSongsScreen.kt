@@ -75,7 +75,7 @@ fun ArtistSongsScreen(
                             },
                         )
                     },
-                    onMoreClick = { overlay = OverlayState.TrackActionMenu(song) },
+                    onMoreClick = { overlay = OverlayState.TrackActionMenu(song, it) },
                 )
             }
             if (state.error != null) {

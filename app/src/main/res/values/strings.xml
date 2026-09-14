@@ -560,4 +560,15 @@
     <string name="artist_all_songs_count">All %1$d songs</string>
     <string name="artist_all_songs">All Songs</string>
     <string name="artist_songs_empty">No songs available</string>
+    <string name="track_action_download_song">Download Song</string>
+    <string name="track_quality_standard">Standard</string>
+    <string name="track_quality_high">High Quality</string>
+    <string name="track_quality_lossless">Lossless</string>
+    <string name="track_quality_hires">Hi-Res</string>
+    <string name="track_quality_surround">HD Surround</string>
+    <string name="track_quality_spatial">Immersive Surround</string>
+    <string name="track_quality_master">Master</string>
+    <string name="menu_expanded">Expanded</string>
+    <string name="menu_collapsed">Collapsed</string>
+    <string name="track_action_share">Share</string>
 </resources>

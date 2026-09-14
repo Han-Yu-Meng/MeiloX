@@ -70,6 +70,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
@@ -666,6 +667,11 @@ fun IosContextMenu(
     shadowAlpha: Float = animationProgress,
     opensAbove: Boolean = false,
     itemCount: Int = 1,
+    compact: Boolean = false,
+    heightOverride: androidx.compose.ui.unit.Dp? = null,
+    menuWidth: androidx.compose.ui.unit.Dp = PopupMenuWidth,
+    menuScale: Float = 1f,
+    onMenuBoundsChanged: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
     content: @Composable ColumnScope.(LayerBackdrop) -> Unit,
 ) {
     if (!visible) return
@@ -679,8 +685,7 @@ fun IosContextMenu(
         sin(PI.toFloat() * progress),
         abs(normalizedVelocity) * 0.65f,
     ).coerceIn(0f, 1f)
-    val menuWidth = PopupMenuWidth
-    val menuHeight = 20.dp + 44.dp * itemCount
+    val menuHeight = heightOverride ?: (20.dp + 44.dp * itemCount)
     val radius = 34.dp
     val transitionScale = 0.24f + 0.76f * animationProgress
     val startOrigin = TransformOrigin(1f, if (opensAbove) 1f else 0f)
@@ -716,20 +721,22 @@ fun IosContextMenu(
         // LayerBackdrop applies the inverse of this complete transform while sampling, so the
         // page-sized source remains stationary as the visible menu grows, collapses, or deforms.
         transformOrigin = transitionOrigin
-        scaleX = transitionScale * dragScaleX
-        scaleY = transitionScale * dragScaleY
-        translationX = transitionScale * (
+        scaleX = transitionScale * dragScaleX * menuScale
+        scaleY = transitionScale * dragScaleY * menuScale
+        // Apply the rear-menu scale around the opening corner while preserving the
+        // existing entrance animation's moving pivot when menuScale is 1.
+        translationX = menuScale * transitionScale * (
             dragTranslationX + (1f - dragScaleX) * (startPivotX - transitionPivotX)
-        )
-        translationY = transitionScale * (
+        ) + (1f - menuScale) * (startPivotX - transitionPivotX)
+        translationY = menuScale * transitionScale * (
             dragTranslationY + (1f - dragScaleY) * (startPivotY - transitionPivotY)
-        )
+        ) + (1f - menuScale) * (startPivotY - transitionPivotY)
     }
     // Stable full-size host: keep overshoot margins on both the growth and anchor sides in the
     // measured Popup bounds. The original visual host is nested inside it, so this only enlarges
     // the RenderEffect backing area and does not move the visible menu.
-    val popupHostWidth = PopupMenuOvershootMarginStart * 2 + menuWidth * PopupMenuOvershootScale
-    val popupHostHeight = PopupMenuOvershootMarginVertical * 2 + menuHeight * PopupMenuOvershootScale
+    val popupHostWidth = if (compact) menuWidth else PopupMenuOvershootMarginStart * 2 + menuWidth * PopupMenuOvershootScale
+    val popupHostHeight = if (compact) menuHeight else PopupMenuOvershootMarginVertical * 2 + menuHeight * PopupMenuOvershootScale
     Box(
         modifier
             // Keep the transition RenderEffect on the stable Popup host.  A blur modifier
@@ -747,14 +754,25 @@ fun IosContextMenu(
             Modifier
                 .align(if (opensAbove) Alignment.TopStart else Alignment.BottomStart)
                 .size(
-                    width = PopupMenuOvershootMarginStart + menuWidth * PopupMenuOvershootScale,
-                    height = PopupMenuOvershootMarginVertical + menuHeight * PopupMenuOvershootScale,
+                    width = if (compact) menuWidth else PopupMenuOvershootMarginStart + menuWidth * PopupMenuOvershootScale,
+                    height = if (compact) menuHeight else PopupMenuOvershootMarginVertical + menuHeight * PopupMenuOvershootScale,
                 ),
         ) {
             Box(
                 Modifier
                     .align(if (opensAbove) Alignment.BottomEnd else Alignment.TopEnd)
                     .size(width = menuWidth, height = menuHeight)
+                    .onGloballyPositioned { coordinates ->
+                        // Measure outside the animated glass layer. Capturing a pressed row
+                        // includes transient drag scale and gives the child a stale endpoint.
+                        val origin = coordinates.localToScreen(androidx.compose.ui.geometry.Offset.Zero)
+                        onMenuBoundsChanged?.invoke(
+                            androidx.compose.ui.geometry.Rect(
+                                origin,
+                                Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat()),
+                            ),
+                        )
+                    }
                     .navigationGlassBoxShadow(
                         shape = { RoundedRectangle(radius) },
                         alpha = GlassBoxShadowAlpha * shadowAlpha.coerceIn(0f, 1f),
@@ -819,6 +837,11 @@ fun IosPopupMenu(
     backdrop: Backdrop = LocalBlurBackdrop.current,
     keepAnchorVisible: Boolean = false,
     forceBelowAnchor: Boolean = false,
+    externalAnchorBounds: androidx.compose.ui.geometry.Rect? = null,
+    menuWidth: androidx.compose.ui.unit.Dp = PopupMenuWidth,
+    menuScale: Float = 1f,
+    onMenuBoundsChanged: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
+    onClosed: (() -> Unit)? = null,
     anchor: @Composable (onClick: () -> Unit) -> Unit,
     content: @Composable ColumnScope.(LayerBackdrop, close: () -> Unit) -> Unit,
 ) {
@@ -929,6 +952,7 @@ fun IosPopupMenu(
             transformOriginProgress.snapTo(0f)
             menuAlpha.snapTo(0f)
             popupAlive = false
+            onClosed?.invoke()
         }
     }
 
@@ -965,11 +989,11 @@ fun IosPopupMenu(
         ) {
             anchor { onExpandedChange(!expanded) }
         }
-        if (popupAlive && anchorSize != IntSize.Zero) {
+        if (popupAlive && (anchorSize != IntSize.Zero || externalAnchorBounds != null)) {
             val density = androidx.compose.ui.platform.LocalDensity.current
             val targetMenuHeightPx = with(density) { (20.dp + 44.dp * itemCount).roundToPx() }
             val visualHostWidthPx = with(density) {
-                (PopupMenuOvershootMarginStart + PopupMenuWidth * PopupMenuOvershootScale).roundToPx()
+                (PopupMenuOvershootMarginStart + menuWidth * PopupMenuOvershootScale).roundToPx()
             }
             val visualHostHeightPx = with(density) {
                 (
@@ -997,7 +1021,20 @@ fun IosPopupMenu(
                 }
             }
             Popup(
-                popupPositionProvider = positionProvider,
+                popupPositionProvider = if (externalAnchorBounds == null) positionProvider else
+                    object : PopupPositionProvider {
+                        override fun calculatePosition(
+                            anchorBounds: IntRect,
+                            windowSize: IntSize,
+                            layoutDirection: LayoutDirection,
+                            popupContentSize: IntSize,
+                        ): IntOffset = positionProvider.calculatePosition(
+                            IntRect(
+                                externalAnchorBounds.left.toInt(), externalAnchorBounds.top.toInt(),
+                                externalAnchorBounds.right.toInt(), externalAnchorBounds.bottom.toInt(),
+                            ), windowSize, layoutDirection, popupContentSize,
+                        )
+                    },
                 onDismissRequest = { onExpandedChange(false) },
                 properties = PopupProperties(
                     focusable = expanded,
@@ -1026,6 +1063,9 @@ fun IosPopupMenu(
                             shadowAlpha = shadowAlpha.value,
                             opensAbove = opensAbove,
                             itemCount = itemCount,
+                            menuScale = menuScale,
+                            menuWidth = menuWidth,
+                            onMenuBoundsChanged = onMenuBoundsChanged,
                         ) { childBackdrop ->
                             content(childBackdrop) { onExpandedChange(false) }
                         }
@@ -1105,6 +1145,10 @@ fun IosMenuItem(
     systemName: String? = null,
     destructive: Boolean = false,
     backdrop: Backdrop = LocalGlassBackdrop.current,
+    enabled: Boolean = true,
+    iconTint: Color? = null,
+    fontWeight: FontWeight? = null,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val interactive = LocalIosPopupMenuInteractive.current
@@ -1118,7 +1162,7 @@ fun IosMenuItem(
                 shape = Capsule(),
             )
             .then(
-                if (interactive) {
+                if (interactive && enabled) {
                     Modifier
                         .clickable(interactionSource = null, indication = null, onClick = onClick)
                         .then(highlight.gestureModifier)
@@ -1126,18 +1170,23 @@ fun IosMenuItem(
                     Modifier
                 },
             )
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Fixed-width gutter keeps every title's left edge aligned, whether or not the
         // row shows a checkmark (iOS context-menu alignment).
         Box(Modifier.width(20.dp), contentAlignment = Alignment.Center) {
             if (systemName != null) {
-                SfIcon(systemName, null, size = 20.dp, tint = if (destructive) LocalGlassColors.current.destructive else LocalGlassColors.current.content)
+                SfIcon(systemName, null, size = 20.dp, tint = iconTint ?: if (destructive) LocalGlassColors.current.destructive else LocalGlassColors.current.content)
             }
         }
         Spacer(Modifier.width(12.dp))
-        Text(title, style = IosTypography.body, color = if (destructive) LocalGlassColors.current.destructive else LocalGlassColors.current.content)
+        Text(
+            title, modifier = Modifier.weight(1f), style = IosTypography.body,
+            fontWeight = fontWeight, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            color = if (destructive) LocalGlassColors.current.destructive else LocalGlassColors.current.content,
+        )
+        trailing?.invoke()
     }
 }
 

@@ -199,7 +199,7 @@ fun ArtistScreen(
                                     }
                                 )
                             },
-                            onMoreClick = { currentOverlay = OverlayState.TrackActionMenu(song.toMediaMetadata()) }
+                            onMoreClick = { currentOverlay = OverlayState.TrackActionMenu(song.toMediaMetadata(), it) }
                         )
                     }
                 }

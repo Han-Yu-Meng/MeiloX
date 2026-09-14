@@ -1,5 +1,9 @@
 package com.ljyh.mei.ui.screen.main.library.component
 
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+
 import android.text.format.DateUtils
 import android.widget.Toast
 import androidx.compose.foundation.clickable
@@ -390,7 +394,7 @@ fun LibraryMobileLayout(
                                     )
                                 },
                                 onMoreClick = {
-                                    currentOverlay = OverlayState.TrackActionMenu(song)
+                                    currentOverlay = OverlayState.TrackActionMenu(song, it)
                                 },
                             )
                         }
@@ -567,8 +571,9 @@ fun LibraryMobileLayout(
 private fun LibrarySongRow(
     song: MediaMetadata,
     onClick: () -> Unit,
-    onMoreClick: () -> Unit,
+    onMoreClick: (Rect) -> Unit,
 ) {
+    var menuAnchor by remember { mutableStateOf(Rect.Zero) }
     LibraryMediaRow(
         image = song.coverUrl,
         title = song.title,
@@ -576,10 +581,11 @@ private fun LibrarySongRow(
         onClick = onClick,
         trailing = {
             Box(
-                Modifier.size(44.dp).clip(ContinuousRoundedRectangle(22.dp)).clickable(
+                Modifier.size(44.dp).onGloballyPositioned { menuAnchor = it.boundsInWindow() }
+                    .clip(ContinuousRoundedRectangle(22.dp)).clickable(
                     interactionSource = null,
                     indication = null,
-                    onClick = onMoreClick,
+                    onClick = { onMoreClick(menuAnchor) },
                 ),
                 contentAlignment = Alignment.Center,
             ) {
