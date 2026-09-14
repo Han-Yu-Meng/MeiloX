@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -133,6 +135,8 @@ private const val PopupMenuOvershootScale = 1.15f
 
 private class IosPopupPositionProvider(
     private val targetMenuHeightPx: Int,
+    private val targetMenuWidthPx: Int,
+    private val horizontalInsetPx: Int,
     private val forceBelowAnchor: Boolean,
     private val visualHostWidthPx: Int,
     private val visualHostHeightPx: Int,
@@ -159,11 +163,16 @@ private class IosPopupPositionProvider(
                 }
             }
         }
-        // Use the intended visual host dimensions instead of popupContentSize. On narrow
-        // devices Android may constrain the expanded Popup content to the window width; using
-        // that constrained size would make the visible menu drift toward the right.
-        val x = (anchorBounds.right - visualHostWidthPx)
-            .coerceIn(0, (windowSize.width - visualHostWidthPx).coerceAtLeast(0))
+        // Constrain the visible menu, not its transparent animation shell. The shell may
+        // start offscreen; clamping it to zero pushes wider menus away from their anchor.
+        val inset = horizontalInsetPx.coerceAtMost(
+            ((windowSize.width - targetMenuWidthPx) / 2).coerceAtLeast(0),
+        )
+        val menuLeft = (anchorBounds.right - targetMenuWidthPx).coerceIn(
+            inset,
+            (windowSize.width - targetMenuWidthPx - inset).coerceAtLeast(inset),
+        )
+        val x = menuLeft - (visualHostWidthPx - targetMenuWidthPx)
         // The forced-below variant is used by message bubbles. Its popup host contains the
         // vertical overshoot margin plus the 15% spring shell, so positioning the host at
         // `anchorBounds.bottom` would leave the menu beside the bubble. Offset the host by the
@@ -739,6 +748,10 @@ fun IosContextMenu(
     val popupHostHeight = if (compact) menuHeight else PopupMenuOvershootMarginVertical * 2 + menuHeight * PopupMenuOvershootScale
     Box(
         modifier
+            // Keep the shell's intended width even when Android constrains the popup window.
+            // Start alignment prevents implicit centering from changing the visible offset.
+            .wrapContentWidth(androidx.compose.ui.AbsoluteAlignment.Left, unbounded = true)
+            .requiredWidth(popupHostWidth)
             // Keep the transition RenderEffect on the stable Popup host.  A blur modifier
             // creates a bounded graphics layer even with Unbounded edge treatment; placing it
             // on the spring-sized menu would therefore expose that menu-sized rectangle while
@@ -992,6 +1005,8 @@ fun IosPopupMenu(
         if (popupAlive && (anchorSize != IntSize.Zero || externalAnchorBounds != null)) {
             val density = androidx.compose.ui.platform.LocalDensity.current
             val targetMenuHeightPx = with(density) { (20.dp + 44.dp * itemCount).roundToPx() }
+            val targetMenuWidthPx = with(density) { menuWidth.roundToPx() }
+            val horizontalInsetPx = with(density) { 12.dp.roundToPx() }
             val visualHostWidthPx = with(density) {
                 (PopupMenuOvershootMarginStart + menuWidth * PopupMenuOvershootScale).roundToPx()
             }
@@ -1004,12 +1019,16 @@ fun IosPopupMenu(
             val positionProvider = remember(
                 anchorSize,
                 targetMenuHeightPx,
+                targetMenuWidthPx,
+                horizontalInsetPx,
                 forceBelowAnchor,
                 visualHostWidthPx,
                 visualHostHeightPx,
             ) {
                 IosPopupPositionProvider(
                     targetMenuHeightPx = targetMenuHeightPx,
+                    targetMenuWidthPx = targetMenuWidthPx,
+                    horizontalInsetPx = horizontalInsetPx,
                     forceBelowAnchor = forceBelowAnchor,
                     visualHostWidthPx = visualHostWidthPx,
                     visualHostHeightPx = visualHostHeightPx,
