@@ -31,14 +31,46 @@ android {
         }
     }
 
+    signingConfigs {
+        // 本地：无 keystore.properties 时用 Android debug 签名，保证 assembleRelease 可直接编
+        // CI/正式：项目根目录 keystore.properties（storeFile/storePassword/keyAlias/keyPassword）
+        create("release") {
+            val propsFile = rootProject.file("keystore.properties")
+            if (propsFile.exists()) {
+                val props = java.util.Properties().apply {
+                    propsFile.inputStream().use { load(it) }
+                }
+                storeFile = file(props.getProperty("storeFile"))
+                storePassword = props.getProperty("storePassword")
+                keyAlias = props.getProperty("keyAlias")
+                keyPassword = props.getProperty("keyPassword")
+            } else {
+                val debugKeystore = File(System.getProperty("user.home"), ".android/debug.keystore")
+                storeFile = debugKeystore
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        // 本地快速验证：不混淆，签名同 release debug key
+        create("benchmark") {
+            initWith(getByName("release"))
+            isMinifyEnabled = false
+            isShrinkResources = false
+            signingConfig = signingConfigs.getByName("release")
+            matchingFallbacks += listOf("release")
         }
     }
     compileOptions {
