@@ -203,7 +203,10 @@ object MusetagClient {
         }
 
     suspend fun fetchMe(): Result<MusetagUser> = withContext(Dispatchers.IO) {
-        runCatching { parseUser(get("/api/user/me")) }
+        runCatching {
+            val json = get("/api/user/me")
+            parseUser(json).also { MusetagStore.user = it }
+        }
     }
 
     suspend fun fetchLibrary(): Result<MusetagLibrary> = withContext(Dispatchers.IO) {
@@ -248,7 +251,37 @@ object MusetagClient {
             username = o.optString("username"),
             role = o.optString("role"),
             avatarUrl = o.optString("avatarUrl"),
+            likedSongs = parseLiked(o.optJSONArray("likedSongs") ?: o.optJSONArray("likedSongIds")),
+            likedAlbums = parseLiked(o.optJSONArray("likedAlbums") ?: o.optJSONArray("likedAlbumIds")),
+            likedArtists = parseLiked(o.optJSONArray("likedArtists") ?: o.optJSONArray("likedArtistIds")),
+            playlists = parsePlaylists(o.optJSONArray("playlists")),
         )
+    }
+
+    private fun parseLiked(arr: JSONArray?): List<MusetagLiked> {
+        if (arr == null) return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val el = arr.opt(i)
+            when (el) {
+                is JSONObject -> el.optString("id").takeIf { it.isNotBlank() }
+                    ?.let { MusetagLiked(it, if (el.has("date")) el.optLong("date") else null) }
+                is String -> if (el.isNotBlank()) MusetagLiked(el, null) else null
+                else -> null
+            }
+        }
+    }
+
+    private fun parsePlaylists(arr: JSONArray?): List<MusetagPlaylist> {
+        if (arr == null) return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            MusetagPlaylist(
+                id = o.optString("id"),
+                title = o.optString("title"),
+                content = null,
+                coverUrl = o.optString("coverUrl").ifBlank { null },
+            )
+        }
     }
 
     private fun parseSongs(arr: JSONArray?): List<MusetagSong> {

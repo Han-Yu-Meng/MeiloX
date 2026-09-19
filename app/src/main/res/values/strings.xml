@@ -23,6 +23,14 @@
     <string name="musetag_refreshing">刷新中…</string>
     <string name="musetag_load_more">加载更多</string>
     <string name="musetag_library_sign_in">连接 Musetag 服务器</string>
+    <string name="musetag_liked_songs">喜爱的歌曲</string>
+    <string name="musetag_liked_albums">喜爱的专辑</string>
+    <string name="musetag_liked_artists">喜爱的艺术家</string>
+    <string name="musetag_recent_albums">最近专辑</string>
+    <string name="musetag_show_all">显示全部</string>
+    <string name="musetag_collapse">收起</string>
+    <string name="musetag_hot_songs">热门单曲</string>
+    <string name="musetag_all_songs_fmt">全部 %1$d 首歌曲</string>
     <string name="artist_follow">Follow</string>
     <string name="artist_following">Following</string>
     <string name="artist_unavailable_title">Artist unavailable</string>

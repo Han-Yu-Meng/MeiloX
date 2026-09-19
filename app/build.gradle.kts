@@ -1,13 +1,13 @@
 @file:Suppress("UnstableApiUsage")
 
+import java.io.File
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-//    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
     alias(libs.plugins.kotlin.serialization)
-
 }
 
 
@@ -18,8 +18,8 @@ android {
     compileSdk = 37
     defaultConfig {
         applicationId = "com.neoruaa.meilox"
-        minSdk = 33
-        targetSdk = 37
+        minSdk = 29
+        targetSdk = 35
         versionCode = 11
         versionName = "1.54.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -32,25 +32,13 @@ android {
     }
 
     signingConfigs {
-        // 本地：无 keystore.properties 时用 Android debug 签名，保证 assembleRelease 可直接编
-        // CI/正式：项目根目录 keystore.properties（storeFile/storePassword/keyAlias/keyPassword）
+        // 本地 assembleRelease 直接可装；CI 再用 SIGNING_KEY 重签
+        getByName("debug")
         create("release") {
-            val propsFile = rootProject.file("keystore.properties")
-            if (propsFile.exists()) {
-                val props = java.util.Properties().apply {
-                    propsFile.inputStream().use { load(it) }
-                }
-                storeFile = file(props.getProperty("storeFile"))
-                storePassword = props.getProperty("storePassword")
-                keyAlias = props.getProperty("keyAlias")
-                keyPassword = props.getProperty("keyPassword")
-            } else {
-                val debugKeystore = File(System.getProperty("user.home"), ".android/debug.keystore")
-                storeFile = debugKeystore
-                storePassword = "android"
-                keyAlias = "androiddebugkey"
-                keyPassword = "android"
-            }
+            storeFile = File(System.getProperty("user.home"), ".android/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
         }
     }
 
@@ -63,14 +51,6 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-        }
-        // 本地快速验证：不混淆，签名同 release debug key
-        create("benchmark") {
-            initWith(getByName("release"))
-            isMinifyEnabled = false
-            isShrinkResources = false
-            signingConfig = signingConfigs.getByName("release")
-            matchingFallbacks += listOf("release")
         }
     }
     compileOptions {

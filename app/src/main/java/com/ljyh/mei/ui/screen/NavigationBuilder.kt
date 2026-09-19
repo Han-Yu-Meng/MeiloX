@@ -102,7 +102,11 @@ fun NavGraphBuilder.navigationBuilder(
     }
 
     composable(Screen.Search.route) {
-        SearchLandingScreen()
+        if (com.ljyh.mei.musetag.MusetagClient.isLoggedIn()) {
+            com.ljyh.mei.ui.screen.musetag.MusetagSearchScreen()
+        } else {
+            SearchLandingScreen()
+        }
     }
 
     composable(Screen.PrivateMessages.route) {
@@ -286,13 +290,27 @@ fun NavGraphBuilder.navigationBuilder(
         route = "${Screen.Album.route}/{id}",
         arguments = listOf(
             navArgument("id") {
-                type = NavType.LongType
+                type = NavType.StringType
             }
         )
-    ) {
-        AlbumDetailScreen(id = it.arguments!!.getLong("id"))
+    ) { entry ->
+        val rawId = entry.arguments?.getString("id").orEmpty()
+        val decoded = com.ljyh.mei.ui.screen.musetag.decodeMusetagId(rawId)
+        val musetagAlbum = com.ljyh.mei.musetag.MusetagStore.resolveAlbum(decoded)
+        if (musetagAlbum != null || decoded.startsWith("album:") ||
+            com.ljyh.mei.musetag.MusetagClient.isLoggedIn()
+        ) {
+            if (musetagAlbum != null || decoded.contains(":")) {
+                com.ljyh.mei.ui.screen.musetag.MusetagAlbumScreen(rawId)
+            } else {
+                decoded.toLongOrNull()?.let { AlbumDetailScreen(id = it) }
+                    ?: com.ljyh.mei.ui.screen.musetag.MusetagAlbumScreen(rawId)
+            }
+        } else {
+            decoded.toLongOrNull()?.let { AlbumDetailScreen(id = it) }
+        }
     }
-    
+
     composable(
         route = "${Screen.Artist.route}/{id}",
         arguments = listOf(
@@ -300,8 +318,18 @@ fun NavGraphBuilder.navigationBuilder(
                 type = NavType.StringType
             }
         )
-    ) {
-        ArtistScreen(id = it.arguments!!.getString("id")!!)
+    ) { entry ->
+        val rawId = entry.arguments?.getString("id").orEmpty()
+        val decoded = com.ljyh.mei.ui.screen.musetag.decodeMusetagId(rawId)
+        if (com.ljyh.mei.musetag.MusetagStore.resolveArtist(decoded) != null ||
+            decoded.startsWith("artist:") ||
+            decoded.contains(":") ||
+            com.ljyh.mei.musetag.MusetagClient.isLoggedIn()
+        ) {
+            com.ljyh.mei.ui.screen.musetag.MusetagArtistScreen(rawId)
+        } else {
+            ArtistScreen(id = rawId)
+        }
     }
 
     composable(
@@ -361,7 +389,13 @@ fun navigationEntry(
         }
         route == Screen.Podcasts.route -> PodcastScreen(isNavigationTab = isNavigationTab)
         route == Screen.CloudMusic.route -> CloudMusicScreen(isNavigationTab = isNavigationTab)
-        route == Screen.Search.route -> SearchLandingScreen()
+        route == Screen.Search.route -> {
+            if (com.ljyh.mei.musetag.MusetagClient.isLoggedIn()) {
+                com.ljyh.mei.ui.screen.musetag.MusetagSearchScreen()
+            } else {
+                SearchLandingScreen()
+            }
+        }
         route == Screen.PrivateMessages.route -> ConversationsScreen()
         route == Screen.MessageContacts.route -> MessageContactsScreen()
         route == Screen.ListenTogether.route -> ListenTogetherScreen()
@@ -434,10 +468,16 @@ fun navigationEntry(
         route.startsWith("${Screen.SearchResult.route}/") -> {
             val args = route.substringAfter("${Screen.SearchResult.route}/").split('/', limit = 2)
             if (args.size == 2) {
-                SearchResultScreen(
-                    query = android.net.Uri.decode(args[0]),
-                    type = args[1].toIntOrNull() ?: 1,
-                )
+                if (com.ljyh.mei.musetag.MusetagClient.isLoggedIn()) {
+                    val q = android.net.Uri.decode(args[0])
+                    com.ljyh.mei.ui.screen.musetag.MusetagSearchQuery.pending = q
+                    com.ljyh.mei.ui.screen.musetag.MusetagSearchScreen(initialQuery = q)
+                } else {
+                    SearchResultScreen(
+                        query = android.net.Uri.decode(args[0]),
+                        type = args[1].toIntOrNull() ?: 1,
+                    )
+                }
             }
         }
         route.startsWith("${Screen.PlayList.route}/") -> {
@@ -445,15 +485,30 @@ fun navigationEntry(
                 ?.let { PlaylistScreen(id = it) }
         }
         route.startsWith("${Screen.Album.route}/") -> {
-            route.substringAfter("${Screen.Album.route}/").toLongOrNull()
-                ?.let { AlbumDetailScreen(id = it) }
+            val raw = route.substringAfter("${Screen.Album.route}/")
+            val decoded = com.ljyh.mei.ui.screen.musetag.decodeMusetagId(raw)
+            if (com.ljyh.mei.musetag.MusetagStore.findAlbum(decoded) != null ||
+                decoded.contains(":") ||
+                com.ljyh.mei.musetag.MusetagClient.isLoggedIn()
+            ) {
+                com.ljyh.mei.ui.screen.musetag.MusetagAlbumScreen(raw)
+            } else {
+                decoded.toLongOrNull()?.let { AlbumDetailScreen(id = it) }
+            }
         }
         route.startsWith("${Screen.ArtistSongs.route}/") -> {
             ArtistSongsScreen(id = route.substringAfter("${Screen.ArtistSongs.route}/"))
         }
         route.startsWith("${Screen.Artist.route}/") -> {
-            route.substringAfter("${Screen.Artist.route}/")
-                .let { ArtistScreen(id = it) }
+            val raw = route.substringAfter("${Screen.Artist.route}/")
+            if (com.ljyh.mei.musetag.MusetagStore.resolveArtist(com.ljyh.mei.ui.screen.musetag.decodeMusetagId(raw)) != null ||
+                raw.contains(":") ||
+                com.ljyh.mei.musetag.MusetagClient.isLoggedIn()
+            ) {
+                com.ljyh.mei.ui.screen.musetag.MusetagArtistScreen(raw)
+            } else {
+                ArtistScreen(id = raw)
+            }
         }
         route.startsWith("${Screen.Comment.route}/") -> {
             route.substringAfter("${Screen.Comment.route}/")

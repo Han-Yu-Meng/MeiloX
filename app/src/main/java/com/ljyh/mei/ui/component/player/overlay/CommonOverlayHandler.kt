@@ -71,14 +71,18 @@ fun CommonOverlayHandler(
                 albumInfo = overlay.album,
                 artistList = overlay.artists,
                 onAlbumClick = { id ->
+                    val key = com.ljyh.mei.musetag.MusetagStore.resolveAlbum(id.toString())?.id
+                        ?: id.toString()
                     Screen.Album.navigate(navController) {
-                        addPath(id.toString())
+                        addPath(com.ljyh.mei.ui.screen.musetag.encodeMusetagId(key))
                     }
                     sheetState?.collapse(spring(stiffness = Spring.StiffnessVeryLow))
                 },
                 onArtistClick = { id ->
+                    val key = com.ljyh.mei.musetag.MusetagStore.resolveArtist(id.toString())?.id
+                        ?: id.toString()
                     Screen.Artist.navigate(navController) {
-                        addPath(id.toString())
+                        addPath(com.ljyh.mei.ui.screen.musetag.encodeMusetagId(key))
                     }
                     sheetState?.collapse(spring(stiffness = Spring.StiffnessVeryLow))
                 },

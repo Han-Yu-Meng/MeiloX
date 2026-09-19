@@ -82,7 +82,7 @@ enum class Index(
     ;
 
     companion object {
-        val DefaultOrder = listOf(Home, Library, Settings)
+        val DefaultOrder = listOf(Home, Library, Search, Settings)
     }
 }
 

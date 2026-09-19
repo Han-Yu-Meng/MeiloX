@@ -344,7 +344,43 @@ class MusicService : MediaLibraryService(),
 
 
         systemLyricsBridge = SystemLyricsBridge(this, player, lyricManager, mediaSession)
-        restorePlayerState()
+        // 恢复队列改到后台，禁止在 onCreate 主线程做 IO/解析，避免冷启动闪退
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    runCatching { com.ljyh.mei.musetag.MusetagStore.loadCache(this@MusicService) }
+                }
+                val snapshot = withContext(Dispatchers.IO) {
+                    runCatching { playbackPersistence.load() }.getOrNull()
+                }
+                if (snapshot != null && snapshot.items.isNotEmpty()) {
+                    val restoredItems = playbackPersistence.restoreItems(snapshot)
+                    if (restoredItems.isNotEmpty()) {
+                        val musetagReady = com.ljyh.mei.musetag.MusetagStore.library.songs.isNotEmpty()
+                        val items = if (musetagReady) {
+                            restoredItems.filter {
+                                com.ljyh.mei.musetag.MusetagStore.audioUrlForMediaId(it.mediaId) != null
+                            }
+                        } else restoredItems
+                        if (items.isNotEmpty()) {
+                            val idx = snapshot.currentIndex.coerceIn(items.indices)
+                            queueTitle = snapshot.queueTitle
+                            queueManager.isFmMode = snapshot.isFmMode
+                            player.shuffleModeEnabled = false
+                            player.setMediaItems(items, idx, snapshot.positionMs.coerceAtLeast(0L))
+                            player.repeatMode = Player.REPEAT_MODE_ALL
+                            queueManager.restorePlaylistSource(snapshot.playlistSource)
+                            player.prepare()
+                            player.playWhenReady = false
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Timber.tag("MusicService").e(e, "restore failed")
+            } finally {
+                isRestoringPlayback = false
+            }
+        }
         periodicSnapshotJob = scope.launch {
             while (true) {
                 delay(PLAYBACK_SNAPSHOT_INTERVAL_MS)
@@ -370,33 +406,40 @@ class MusicService : MediaLibraryService(),
 
     private fun restorePlayerState() {
         try {
+            // 先载入 musetag 磁盘缓存，避免恢复播放时无 URL 报错
+            runCatching {
+                com.ljyh.mei.musetag.MusetagStore.loadCache(this)
+                com.ljyh.mei.musetag.MusetagClient.preloadFromDisk()
+            }
             val snapshot = runBlocking(Dispatchers.IO) { playbackPersistence.load() }
             if (snapshot != null && snapshot.items.isNotEmpty()) {
                 val restoredItems = playbackPersistence.restoreItems(snapshot)
-                val restoredIndex = snapshot.currentIndex.coerceIn(restoredItems.indices)
+                if (restoredItems.isEmpty()) return
+                // musetag：仅恢复队列，禁止启动即播放（避免闪退/误播）
+                val musetagReady = com.ljyh.mei.musetag.MusetagStore.library.songs.isNotEmpty()
+                val items = if (musetagReady) {
+                    restoredItems.filter {
+                        com.ljyh.mei.musetag.MusetagStore.audioUrlForMediaId(it.mediaId) != null
+                    }
+                } else {
+                    restoredItems
+                }
+                if (items.isEmpty()) return
+                val restoredIndex = snapshot.currentIndex.coerceIn(items.indices)
                 queueTitle = snapshot.queueTitle
                 queueManager.isFmMode = snapshot.isFmMode
                 player.shuffleModeEnabled = false
                 player.setMediaItems(
-                    restoredItems,
+                    items,
                     restoredIndex,
                     snapshot.positionMs.coerceAtLeast(0L),
                 )
-                player.repeatMode = snapshot.repeatMode.coerceIn(
-                    Player.REPEAT_MODE_OFF,
-                    Player.REPEAT_MODE_ALL,
-                )
-                snapshot.shuffleOrder?.takeIf { it.isPlaybackPermutation(restoredItems.size) }
-                    ?.let { player.setPlaybackOrder(it) }
-                player.shuffleModeEnabled = snapshot.shuffleModeEnabled && !snapshot.isFmMode
+                player.repeatMode = Player.REPEAT_MODE_ALL
                 queueManager.restorePlaylistSource(snapshot.playlistSource)
+                // 只 prepare，不自动 play
                 player.prepare()
-                player.playWhenReady = snapshot.playWhenReady
-                Timber.tag("MusicService").d(
-                    "Restored playback snapshot -> items: ${restoredItems.size}, " +
-                        "index: $restoredIndex, position: ${snapshot.positionMs}, " +
-                        "source: ${snapshot.sourceType}",
-                )
+                player.playWhenReady = false
+                Timber.tag("MusicService").d("Restored queue items=${items.size} autoplay=false")
             } else {
                 val preferences = runBlocking(Dispatchers.IO) {
                     context.dataStore.data.firstOrNull()
@@ -405,9 +448,6 @@ class MusicService : MediaLibraryService(),
                 val savedRepeatMode = preferences[RepeatModeKey] ?: Player.REPEAT_MODE_ALL
                 player.shuffleModeEnabled = savedShuffleMode
                 player.repeatMode = savedRepeatMode
-                Timber.tag("MusicService").d(
-                    "Restored legacy state -> shuffle: $savedShuffleMode, repeat: $savedRepeatMode",
-                )
             }
         } catch (error: Exception) {
             Timber.tag("MusicService").e(error, "Unable to restore playback snapshot")

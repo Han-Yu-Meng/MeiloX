@@ -101,6 +101,7 @@
 -keep class com.ljyh.mei.playback.PlaybackSnapshot { *; }
 -keep class com.ljyh.mei.playback.PlaybackItemSnapshot { *; }
 -keep class com.ljyh.mei.playback.PlaybackArtistSnapshot { *; }
+-keep class com.ljyh.mei.musetag.** { *; }
 
 -keepclasseswithmembernames class * {
     native <methods>;

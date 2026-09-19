@@ -11,6 +11,9 @@ object MusetagStore {
     var library: MusetagLibrary = MusetagLibrary()
         private set
 
+    @Volatile
+    var user: MusetagUser? = null
+
     private val gson = Gson()
     private val idToSong = HashMap<String, MusetagSong>()
     private val artistNameById = HashMap<String, String>()
@@ -68,10 +71,33 @@ object MusetagStore {
         library.songs.filter { it.albumId == albumId }
             .sortedWith(compareBy({ it.discNumber ?: 1 }, { it.trackNumber ?: 0 }))
 
-    fun songsOfArtist(artistId: String): List<MusetagSong> =
-        library.songs.filter { s ->
-            s.artistId == artistId || s.artistIds?.contains(artistId) == true
+    /** 全库歌曲：按加入时间（dateAdded）升序，先加入的先展示 */
+    fun librarySongsSorted(): List<MusetagSong> =
+        library.songs.sortedBy { it.dateAdded ?: 0L }
+
+    /** 全库专辑：按专辑内最早 dateAdded 升序 */
+    fun libraryAlbumsSorted(): List<MusetagAlbum> {
+        val albumJoin = HashMap<String, Long>()
+        library.songs.forEach { s ->
+            val a = s.albumId ?: return@forEach
+            val d = s.dateAdded ?: 0L
+            val prev = albumJoin[a]
+            if (prev == null || d < prev) albumJoin[a] = d
         }
+        return library.albums.sortedBy { albumJoin[it.id] ?: Long.MAX_VALUE }
+    }
+
+    /** 全库艺人：歌曲多的排前面 */
+    fun libraryArtistsSorted(): List<MusetagArtist> {
+        val counts = HashMap<String, Int>()
+        library.artists.forEach { counts[it.id] = 0 }
+        library.songs.forEach { s ->
+            val ids = s.artistIds?.takeIf { it.isNotEmpty() }
+                ?: listOfNotNull(s.artistId)
+            ids.forEach { aid -> counts[aid] = (counts[aid] ?: 0) + 1 }
+        }
+        return library.artists.sortedByDescending { counts[it.id] ?: 0 }
+    }
 
     fun toMediaMetadata(song: MusetagSong): MediaMetadata {
         val mediaId = songIdToLong(song.id)
@@ -95,6 +121,149 @@ object MusetagStore {
                 title = albumTitle,
             ),
         )
+    }
+
+    fun likedSongs(): List<MusetagSong> {
+        val dates = user?.likedSongs?.associate { it.id to (it.date ?: 0L) } ?: return emptyList()
+        return library.songs
+            .filter { it.id in dates }
+            .sortedByDescending { dates[it.id] ?: 0L }
+    }
+
+    fun likedAlbums(): List<MusetagAlbum> {
+        val dates = user?.likedAlbums?.associate { it.id to (it.date ?: 0L) } ?: return emptyList()
+        return library.albums
+            .filter { it.id in dates }
+            .sortedByDescending { dates[it.id] ?: 0L }
+    }
+
+    fun likedArtists(): List<MusetagArtist> {
+        val dates = user?.likedArtists?.associate { it.id to (it.date ?: 0L) } ?: return emptyList()
+        return library.artists
+            .filter { it.id in dates }
+            .sortedByDescending { dates[it.id] ?: 0L }
+    }
+
+    fun findAlbum(id: String): MusetagAlbum? {
+        if (id.isBlank()) return null
+        albumById[id]?.let { return it }
+        library.albums.find { it.id == id }?.let { return it }
+        val variants = listOf(
+            id,
+            runCatching { java.net.URLDecoder.decode(id, "UTF-8") }.getOrDefault(id),
+        )
+        for (v in variants) {
+            library.albums.find { it.id == v }?.let { return it }
+            albumById[v]?.let { return it }
+        }
+        return null
+    }
+
+    fun findArtist(id: String): MusetagArtist? {
+        if (id.isBlank()) return null
+        library.artists.find { it.id == id }?.let { return it }
+        val variants = linkedSetOf(
+            id,
+            runCatching { java.net.URLDecoder.decode(id, "UTF-8") }.getOrDefault(id),
+        )
+        runCatching {
+            val dec = android.util.Base64.decode(id, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP)
+            if (dec.isNotEmpty()) variants.add(String(dec, Charsets.UTF_8))
+        }
+        for (v in variants) {
+            library.artists.find { it.id == v }?.let { return it }
+        }
+        return library.artists.find {
+            it.name.equals(id, ignoreCase = true) ||
+                it.name?.contains(id.substringAfterLast(':'), true) == true
+        }
+    }
+
+    /** 播放器/歌曲入口常传 Long 哈希 id，需反查 musetag artist */
+    fun resolveArtist(key: String): MusetagArtist? {
+        findArtist(key)?.let { return it }
+        val longKey = key.toLongOrNull() ?: return null
+        library.artists.find { songIdToLong(it.id) == longKey }?.let { return it }
+        longToSongId[longKey]?.let { sid ->
+            val song = idToSong[sid] ?: return@let
+            song.artistId?.let { findArtist(it) }?.let { return it }
+            song.artistIds?.forEach { aid -> findArtist(aid)?.let { return it } }
+            findArtist(artistName(song))?.let { return it }
+        }
+        return null
+    }
+
+    fun resolveAlbum(key: String): MusetagAlbum? {
+        findAlbum(key)?.let { return it }
+        val longKey = key.toLongOrNull() ?: return null
+        library.albums.find { songIdToLong(it.id) == longKey }?.let { return it }
+        longToSongId[longKey]?.let { sid ->
+            val song = idToSong[sid] ?: return@let
+            song.albumId?.let { findAlbum(it) }?.let { return it }
+        }
+        return null
+    }
+
+    fun albumsOfArtist(artistId: String): List<MusetagAlbum> {
+        val artist = resolveArtist(artistId)
+        val ids = buildSet {
+            add(artistId)
+            artist?.id?.let { add(it) }
+            artistId.toLongOrNull()?.let { ln ->
+                library.artists.find { songIdToLong(it.id) == ln }?.id?.let { add(it) }
+            }
+        }
+        val name = artist?.name
+        return library.albums.filter { a ->
+            a.artistId in ids ||
+                (name != null && (a.artistId?.let { artistNameById[it] }?.contains(name, true) == true ||
+                    library.songs.any { it.albumId == a.id && artistName(it).contains(name, true) }))
+        }.sortedByDescending { it.year ?: 0 }
+    }
+
+    fun songsOfArtist(artistId: String): List<MusetagSong> {
+        if (artistId.isBlank()) return emptyList()
+        val artist = resolveArtist(artistId)
+        val ids = buildSet {
+            add(artistId)
+            artist?.id?.let { add(it) }
+            artistId.toLongOrNull()?.let { ln ->
+                library.artists.find { songIdToLong(it.id) == ln }?.id?.let { add(it) }
+            }
+        }
+        val name = artist?.name
+        return library.songs.filter { s ->
+            s.artistId in ids ||
+                s.artistIds?.any { it in ids } == true ||
+                (name != null && artistName(s).contains(name, ignoreCase = true))
+        }
+    }
+
+    fun searchAlbums(query: String, limit: Int = 50): List<MusetagAlbum> {
+        val q = query.trim()
+        if (q.isEmpty()) return emptyList()
+        return library.albums.filter {
+            it.title?.contains(q, true) == true ||
+                artistNameById[it.artistId ?: ""]?.contains(q, true) == true
+        }.take(limit)
+    }
+
+    fun searchArtists(query: String, limit: Int = 50): List<MusetagArtist> {
+        val q = query.trim()
+        if (q.isEmpty()) return emptyList()
+        return library.artists.filter { it.name?.contains(q, true) == true }.take(limit)
+    }
+
+    fun recentAlbums(limit: Int = 20): List<MusetagAlbum> {
+        val albumMaxDate = HashMap<String, Long>()
+        library.songs.forEach { s ->
+            val d = s.dateAdded ?: return@forEach
+            val a = s.albumId ?: return@forEach
+            if (d > (albumMaxDate[a] ?: 0L)) albumMaxDate[a] = d
+        }
+        return library.albums
+            .sortedByDescending { albumMaxDate[it.id] ?: 0L }
+            .take(limit)
     }
 
     fun update(lib: MusetagLibrary) {
@@ -121,6 +290,7 @@ object MusetagStore {
     fun clear() {
         synchronized(this) {
             library = MusetagLibrary()
+            user = null
             version++
             idToSong.clear()
             artistNameById.clear()

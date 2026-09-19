@@ -17,8 +17,42 @@ class AppContext : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        // 后台预读 musetag 配置，避免 UI 线程阻塞 DataStore
-        com.ljyh.mei.musetag.MusetagClient.preloadFromDisk()
+        installCrashLogger()
+        try {
+            com.ljyh.mei.musetag.MusetagBootstrap.warmUp(this)
+        } catch (_: Throwable) {
+        }
+    }
+
+    /** 未捕获异常写入本地文件，便于无 adb 时排查闪退 */
+    private fun installCrashLogger() {
+        val default = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                val stamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+                    .format(java.util.Date())
+                val text = buildString {
+                    appendLine("==== $stamp ====")
+                    appendLine("thread=${thread.name}")
+                    appendLine(android.util.Log.getStackTraceString(throwable))
+                    appendLine()
+                }
+                val targets = listOfNotNull(
+                    filesDir,
+                    getExternalFilesDir(null),
+                )
+                targets.forEach { dir ->
+                    try {
+                        val file = java.io.File(dir, "crash.log")
+                        val prev = if (file.exists() && file.length() < 200_000) file.readText() else ""
+                        file.writeText(text + prev)
+                    } catch (_: Throwable) {
+                    }
+                }
+            } catch (_: Throwable) {
+            }
+            default?.uncaughtException(thread, throwable)
+        }
     }
 
     companion object {

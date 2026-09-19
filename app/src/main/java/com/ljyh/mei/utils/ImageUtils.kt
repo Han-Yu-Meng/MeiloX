@@ -22,21 +22,55 @@ import androidx.core.graphics.createBitmap
 import com.ljyh.mei.playback.DownloadWorker
 
 fun String.smallImage(): String {
+    if (this.isBlank()) return this
     if (this.startsWith("/")) return this
+    // musetag 封面接口：用 size 参数，不要拼网易云 ?param=
+    if (contains("album-cache-image") || contains("artist-cache-image")) {
+        return when {
+            contains("size=") -> this
+            contains("?") -> "$this&size=small"
+            else -> "$this?size=small"
+        }
+    }
     return "$this?param=100y100"
 }
 
 fun String.middleImage(): String {
+    if (this.isBlank()) return this
     if (this.startsWith("/")) return this
+    if (contains("album-cache-image") || contains("artist-cache-image")) {
+        return when {
+            contains("size=") -> this
+            contains("?") -> "$this&size=medium"
+            else -> "$this?size=medium"
+        }
+    }
     return "$this?param=300y300"
 }
 
 fun String.largeImage(): String {
+    if (this.isBlank()) return this
     if (this.startsWith("/")) return this
+    if (contains("album-cache-image") || contains("artist-cache-image")) {
+        return when {
+            contains("size=") -> this
+            contains("?") -> "$this&size=big"
+            else -> "$this?size=big"
+        }
+    }
     return "$this?param=500y500"
 }
 
-fun String.size1600():String{
+fun String.size1600(): String {
+    if (this.isBlank()) return this
+    if (this.startsWith("/")) return this
+    if (contains("album-cache-image") || contains("artist-cache-image")) {
+        return when {
+            contains("size=") -> this
+            contains("?") -> "$this&size=original"
+            else -> "$this?size=original"
+        }
+    }
     return "$this?param=1600y1600"
 }
 

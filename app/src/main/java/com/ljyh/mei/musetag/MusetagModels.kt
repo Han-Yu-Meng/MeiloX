@@ -3,73 +3,79 @@ package com.ljyh.mei.musetag
 import com.google.gson.annotations.SerializedName
 
 data class MusetagUser(
-    val id: String,
-    val username: String?,
-    val role: String?,
-    val avatarUrl: String?,
-    val likedSongs: List<MusetagLiked>? = null,
-    val likedAlbums: List<MusetagLiked>? = null,
-    val likedArtists: List<MusetagLiked>? = null,
-    val playlists: List<MusetagPlaylist>? = null,
+    @SerializedName("id") val id: String,
+    @SerializedName("username") val username: String?,
+    @SerializedName("role") val role: String?,
+    @SerializedName("avatarUrl") val avatarUrl: String?,
+    @SerializedName("likedSongs") val likedSongs: List<MusetagLiked>? = null,
+    @SerializedName("likedAlbums") val likedAlbums: List<MusetagLiked>? = null,
+    @SerializedName("likedArtists") val likedArtists: List<MusetagLiked>? = null,
+    @SerializedName("playlists") val playlists: List<MusetagPlaylist>? = null,
 )
 
-data class MusetagLiked(val id: String, val date: Long?)
+data class MusetagLiked(
+    @SerializedName("id") val id: String,
+    @SerializedName("date") val date: Long?,
+)
 
 data class MusetagPlaylist(
-    val id: String,
-    val title: String?,
-    val content: List<MusetagPlaylistItem>?,
-    val coverUrl: String? = null,
+    @SerializedName("id") val id: String,
+    @SerializedName("title") val title: String?,
+    @SerializedName("content") val content: List<MusetagPlaylistItem>?,
+    @SerializedName("coverUrl") val coverUrl: String? = null,
 )
 
-data class MusetagPlaylistItem(val songId: String, val date: Long?)
+data class MusetagPlaylistItem(
+    @SerializedName("songId") val songId: String,
+    @SerializedName("date") val date: Long?,
+)
 
 data class MusetagLibrary(
-    val songs: List<MusetagSong> = emptyList(),
-    val albums: List<MusetagAlbum> = emptyList(),
-    val artists: List<MusetagArtist> = emptyList(),
-    val tags: List<MusetagTag> = emptyList(),
-    val version: Long = 0,
+    @SerializedName("songs") val songs: List<MusetagSong> = emptyList(),
+    @SerializedName("albums") val albums: List<MusetagAlbum> = emptyList(),
+    @SerializedName("artists") val artists: List<MusetagArtist> = emptyList(),
+    @SerializedName("tags") val tags: List<MusetagTag> = emptyList(),
+    @SerializedName("version") val version: Long = 0,
 )
 
 data class MusetagSong(
-    val id: String,
-    val title: String?,
-    val artistId: String? = null,
-    val artistIds: List<String>? = null,
-    val albumId: String? = null,
-    val trackNumber: Int? = null,
-    val discNumber: Int? = null,
-    val duration: Double? = null,
-    val filePath: String? = null,
-    val playCount: Int? = null,
-    val dateAdded: Long? = null,
-    val audioUrl: String? = null,
-    val tagIds: List<String>? = null,
+    @SerializedName("id") val id: String,
+    @SerializedName("title") val title: String?,
+    @SerializedName("artistId") val artistId: String? = null,
+    @SerializedName("artistIds") val artistIds: List<String>? = null,
+    @SerializedName("albumId") val albumId: String? = null,
+    @SerializedName("trackNumber") val trackNumber: Int? = null,
+    @SerializedName("discNumber") val discNumber: Int? = null,
+    @SerializedName("duration") val duration: Double? = null,
+    @SerializedName("filePath") val filePath: String? = null,
+    @SerializedName("playCount") val playCount: Int? = null,
+    @SerializedName("dateAdded") val dateAdded: Long? = null,
+    @SerializedName("audioUrl") val audioUrl: String? = null,
+    @SerializedName("tagIds") val tagIds: List<String>? = null,
 )
 
 data class MusetagAlbum(
-    val id: String,
-    val title: String?,
-    val artistId: String? = null,
-    val year: Int? = null,
-    val coverUrl: String? = null,
-    val tags: List<String>? = null,
+    @SerializedName("id") val id: String,
+    @SerializedName("title") val title: String?,
+    @SerializedName("artistId") val artistId: String? = null,
+    @SerializedName("year") val year: Int? = null,
+    @SerializedName("coverUrl") val coverUrl: String? = null,
+    @SerializedName("tags") val tags: List<String>? = null,
 )
 
 data class MusetagArtist(
-    val id: String,
-    val name: String?,
-    val avatarUrl: String? = null,
-    val description: String? = null,
-    val tags: List<String>? = null,
+    @SerializedName("id") val id: String,
+    @SerializedName("name") val name: String?,
+    @SerializedName("avatarUrl") val avatarUrl: String? = null,
+    @SerializedName("description") val description: String? = null,
+    @SerializedName("tags") val tags: List<String>? = null,
 )
 
 data class MusetagTag(
-    val id: String,
-    val name: String?,
-    val category: String? = null,
-    val parentId: String? = null,
+    @SerializedName("id") val id: String,
+    @SerializedName("name") val name: String?,
+    @SerializedName("category") val category: String? = null,
+    @SerializedName("parentId") val parentId: String? = null,
 )
 
 data class MusetagLyrics(
@@ -77,4 +83,7 @@ data class MusetagLyrics(
     @SerializedName("ttmlContent") val ttmlContent: String? = null,
 )
 
-data class MusetagLoginRequest(val username: String, val password: String)
+data class MusetagLoginRequest(
+    @SerializedName("username") val username: String,
+    @SerializedName("password") val password: String,
+)

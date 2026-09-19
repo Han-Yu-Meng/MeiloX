@@ -135,7 +135,8 @@ class PlayerConnection(
 
 
     fun playQueue(queue: ListQueue, shuffle: Boolean? = null) {
-        // 判断当前 UI 上的模式是否是随机模式
+        // 曲库未就绪/空队列时忽略，避免启动期点歌闪退
+        if (queue.totalCount <= 0) return
         val startInShuffle = shuffle ?: (repeatMode.value == PlayMode.SHUFFLE_MODE_ALL.mode)
         service.queueTitle = queue.title
         queueTitle.value = queue.title

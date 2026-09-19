@@ -212,7 +212,7 @@ fun MiniMediaInfo(
         Box(modifier = Modifier.padding(4.dp)) {
             Spacer(modifier = Modifier.size(32.dp))
             AsyncImage(
-                model = mediaMetadata.coverUrl.smallImage(),
+                model = mediaMetadata.coverUrl.smallImage().takeIf { mediaMetadata.coverUrl.isNotBlank() },
                 contentDescription = null,
                 modifier = Modifier
                     .size(32.dp)

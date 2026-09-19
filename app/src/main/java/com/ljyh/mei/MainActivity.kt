@@ -302,6 +302,8 @@ class MainActivity : ComponentActivity() {
                 if (musetagSession.isBlank()) {
                     return@DisposableEffect onDispose { }
                 }
+                // 延迟绑定播放服务，避开冷启动首帧，降低闪退
+                val handler = android.os.Handler(android.os.Looper.getMainLooper())
                 val intent = Intent(context, MusicService::class.java)
                 val connection = object : ServiceConnection {
                     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -320,9 +322,16 @@ class MainActivity : ComponentActivity() {
                         playerConnection = null
                     }
                 }
-                context.startService(intent)
-                context.bindService(intent, connection, Context.BIND_AUTO_CREATE)
+                val startRunnable = Runnable {
+                    try {
+                        context.startService(intent)
+                        context.bindService(intent, connection, Context.BIND_AUTO_CREATE)
+                    } catch (_: Exception) {
+                    }
+                }
+                handler.postDelayed(startRunnable, 1000)
                 onDispose {
+                    handler.removeCallbacks(startRunnable)
                     runCatching { context.unbindService(connection) }
                     playerConnection = null
                 }
@@ -644,9 +653,17 @@ class MainActivity : ComponentActivity() {
                     val onSearch: (String) -> Unit = {
                         if (it.isNotEmpty()) {
                             onActiveChange(false)
-                            Screen.SearchResult.navigate(navController){
-                                addPath(Uri.encode(it))
-                                addPath("1") // 默认所搜单曲
+                            if (com.ljyh.mei.musetag.MusetagClient.isLoggedIn()) {
+                                // 服务器曲库搜索，不走网易云
+                                com.ljyh.mei.ui.screen.musetag.MusetagSearchQuery.pending = it
+                                if (currentRoute != Screen.Search.route) {
+                                    navController.navigate(Screen.Search.route)
+                                }
+                            } else {
+                                Screen.SearchResult.navigate(navController) {
+                                    addPath(Uri.encode(it))
+                                    addPath("1")
+                                }
                             }
                         }
                     }
@@ -887,23 +904,29 @@ class MainActivity : ComponentActivity() {
                                                 ),
                                         ) {
                                             if (query.text.isNotEmpty()) {
-                                                SearchScreen(
-                                                    query = query.text,
-                                                    onQueryChange = onQueryChange,
-                                                    onSearch = { query, type ->
-                                                        Screen.SearchResult.navigate(navController){
-                                                            addPath(Uri.encode(query))
-                                                            addPath(type.toString())
-                                                        }
-                                                    },
-                                                    onDismiss = {
-                                                        onActiveChange(false)
-                                                    },
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .padding(top = windowsInsets.asPaddingValues().calculateTopPadding())
-                                                        .padding(bottom = searchBottomInset + NavigationBarHeight),
-                                                )
+                                                if (com.ljyh.mei.musetag.MusetagClient.isLoggedIn()) {
+                                                    // musetag：输入即本地曲库搜索，不再走网易云联想/结果
+                                                    com.ljyh.mei.ui.screen.musetag.MusetagSearchScreen(
+                                                        initialQuery = query.text,
+                                                        onQuerySync = { onQueryChange(TextFieldValue(it)) },
+                                                    )
+                                                } else {
+                                                    SearchScreen(
+                                                        query = query.text,
+                                                        onQueryChange = onQueryChange,
+                                                        onSearch = { q, type ->
+                                                            Screen.SearchResult.navigate(navController) {
+                                                                addPath(Uri.encode(q))
+                                                                addPath(type.toString())
+                                                            }
+                                                        },
+                                                        onDismiss = { onActiveChange(false) },
+                                                        modifier = Modifier
+                                                            .fillMaxSize()
+                                                            .padding(top = windowsInsets.asPaddingValues().calculateTopPadding())
+                                                            .padding(bottom = searchBottomInset + NavigationBarHeight),
+                                                    )
+                                                }
                                             }
                                         }
                                     }

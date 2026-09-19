@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -57,12 +56,12 @@ import com.ljyh.mei.ui.local.LocalPlayerAwareWindowInsets
 import com.ljyh.mei.ui.local.LocalPlayerConnection
 import com.ljyh.mei.ui.screen.Screen
 import com.ljyh.mei.utils.rememberPreference
+import com.ljyh.mei.utils.smallImage
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class MusetagTab { Songs, Albums, Artists, Search }
+enum class MusetagTab { Songs, Albums, Artists }
 
 private const val PAGE_SIZE = 60
 
@@ -81,67 +80,44 @@ fun MusetagLibraryScreen() {
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var tab by remember { mutableStateOf(MusetagTab.Songs) }
-    var query by remember { mutableStateOf("") }
-    var debouncedQuery by remember { mutableStateOf("") }
-    var albumFilter by remember { mutableStateOf<MusetagAlbum?>(null) }
-    var artistFilter by remember { mutableStateOf<MusetagArtist?>(null) }
     var libVersion by remember { mutableIntStateOf(MusetagStore.version) }
     var visibleCount by remember { mutableIntStateOf(PAGE_SIZE) }
 
-    // 搜索防抖，避免每键全库扫描
-    LaunchedEffect(query) {
-        if (query.isBlank()) {
-            debouncedQuery = ""
-            return@LaunchedEffect
-        }
-        delay(280)
-        debouncedQuery = query
-    }
-
-    // 首帧用磁盘缓存立刻出列表；网络刷新不挡 UI
+    // 磁盘缓存先上；网络仅静默刷新，不挡操作
     LaunchedEffect(session) {
         if (session.isBlank()) {
             loading = false
             error = null
             return@LaunchedEffect
         }
+        com.ljyh.mei.musetag.MusetagBootstrap.awaitCache()
+        libVersion = MusetagStore.version
         if (MusetagStore.library.songs.isEmpty()) {
-            withContext(Dispatchers.IO) { MusetagStore.loadCache(context) }
-            libVersion = MusetagStore.version
+            loading = true
         }
-        val needFullScreen = MusetagStore.library.songs.isEmpty()
-        if (needFullScreen) loading = true
-        val result = withContext(Dispatchers.IO) { MusetagClient.fetchLibrary() }
+        com.ljyh.mei.musetag.MusetagBootstrap.silentRefreshOnce(context)
+        libVersion = MusetagStore.version
         loading = false
-        result.fold(
-            onSuccess = {
-                withContext(Dispatchers.IO) { MusetagStore.saveCache(context) }
-                libVersion = MusetagStore.version
-            },
-            onFailure = { e ->
-                if (MusetagStore.library.songs.isEmpty()) error = e.message ?: "加载失败"
-            },
-        )
+        if (MusetagStore.library.songs.isEmpty() && !MusetagClient.isLoggedIn()) {
+            error = null
+        }
     }
 
-    val displayed by remember(libVersion) {
+    // 与 musetag 网页一致：歌曲/专辑按加入时间升序；艺人按歌曲数降序
+    val displayed by remember(libVersion, tab) {
         derivedStateOf {
-            val lib = MusetagStore.library
-            when {
-                albumFilter != null -> MusetagStore.songsOfAlbum(albumFilter!!.id)
-                artistFilter != null -> MusetagStore.songsOfArtist(artistFilter!!.id)
-                tab == MusetagTab.Search && debouncedQuery.isNotBlank() ->
-                    MusetagStore.search(debouncedQuery, limit = 200)
-                else -> lib.songs
+            when (tab) {
+                MusetagTab.Songs -> MusetagStore.librarySongsSorted()
+                MusetagTab.Albums -> emptyList()
+                MusetagTab.Artists -> emptyList()
             }
         }
     }
-    val albums by remember(libVersion) { derivedStateOf { MusetagStore.library.albums } }
-    val artists by remember(libVersion) { derivedStateOf { MusetagStore.library.artists } }
+    val albums by remember(libVersion) { derivedStateOf { MusetagStore.libraryAlbumsSorted() } }
+    val artists by remember(libVersion) { derivedStateOf { MusetagStore.libraryArtistsSorted() } }
 
     fun playAll(list: List<MusetagSong>, startIndex: Int = 0) {
         if (list.isEmpty() || playerConnection == null) return
-        // 窗口化队列：避免一次 Map 全库导致主线程/jank/ANR
         val window = 120
         val from = (startIndex - 3).coerceAtLeast(0)
         val slice = list.drop(from).take(window)
@@ -205,23 +181,7 @@ fun MusetagLibraryScreen() {
             }
         }
 
-        OutlinedTextField(
-            value = query,
-            onValueChange = { value ->
-                query = value
-                if (value.isNotBlank()) tab = MusetagTab.Search
-                albumFilter = null
-                artistFilter = null
-                visibleCount = PAGE_SIZE
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            placeholder = { Text(stringResource(R.string.musetag_search_hint)) },
-            singleLine = true,
-            shape = RoundedCornerShape(14.dp),
-        )
-
+        // 仅 歌曲 / 专辑 / 艺人；搜索统一走底栏 Search
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -230,9 +190,6 @@ fun MusetagLibraryScreen() {
             MusetagTab.entries.forEach { t ->
                 TextButton(onClick = {
                     tab = t
-                    if (t != MusetagTab.Search) query = ""
-                    albumFilter = null
-                    artistFilter = null
                     visibleCount = PAGE_SIZE
                 }) {
                     Text(
@@ -240,33 +197,11 @@ fun MusetagLibraryScreen() {
                             MusetagTab.Songs -> stringResource(R.string.musetag_songs)
                             MusetagTab.Albums -> stringResource(R.string.musetag_albums)
                             MusetagTab.Artists -> stringResource(R.string.musetag_artists)
-                            MusetagTab.Search -> stringResource(R.string.musetag_search)
                         },
                         color = if (tab == t) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            }
-        }
-
-        if (albumFilter != null || artistFilter != null) {
-            Row(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = albumFilter?.title ?: artistFilter?.name ?: "",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = {
-                    albumFilter = null
-                    artistFilter = null
-                    visibleCount = PAGE_SIZE
-                }) { Text(stringResource(R.string.musetag_clear_filter)) }
             }
         }
 
@@ -317,10 +252,9 @@ fun MusetagLibraryScreen() {
             ) {
                 items(albums, key = { it.id }) { album ->
                     AlbumRow(album = album, onClick = {
-                        albumFilter = album
-                        artistFilter = null
-                        tab = MusetagTab.Songs
-                        visibleCount = PAGE_SIZE
+                        Screen.Album.navigate(navController) {
+                            addPath(encodeMusetagId(album.id))
+                        }
                     })
                 }
             }
@@ -330,10 +264,9 @@ fun MusetagLibraryScreen() {
             ) {
                 items(artists, key = { it.id }) { artist ->
                     ArtistRow(artist = artist, onClick = {
-                        artistFilter = artist
-                        albumFilter = null
-                        tab = MusetagTab.Songs
-                        visibleCount = PAGE_SIZE
+                        Screen.Artist.navigate(navController) {
+                            addPath(encodeMusetagId(artist.id))
+                        }
                     })
                 }
             }
