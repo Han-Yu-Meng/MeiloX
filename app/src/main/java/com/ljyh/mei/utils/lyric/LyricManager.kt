@@ -158,8 +158,10 @@ class LyricManager @Inject constructor(
 
         // 网络拉取
         fetchJob = scope.launch {
-            // Room 缓存查找（异步，不阻塞主线程）
-            if (!forceReload && currentSongId == songId) {
+            val musetagId = com.ljyh.mei.musetag.MusetagStore.mediaIdToSongId(songId)
+
+            // Room 缓存：musetag 歌曲不读旧网易云缓存
+            if (!forceReload && musetagId == null && currentSongId == songId) {
                 val dbCached = withContext(Dispatchers.IO) {
                     cachedLyricRepository.get(songId).firstOrNull()
                 }
@@ -170,36 +172,77 @@ class LyricManager @Inject constructor(
                 }
             }
 
-            delay(100)
+            delay(50)
 
-            launch { fetchNetEaseLyric(songId) }
-            launch { fetchAMLLyric(songId) }
+            if (musetagId != null) {
+                launch { fetchMusetagLyric(musetagId, songId) }
+            } else {
+                launch { fetchNetEaseLyric(songId) }
+                launch { fetchAMLLyric(songId) }
 
-            // QQ 音乐拉取（带超时控制）
-            val localSong = qqSongRepository.getQQSong(songId).firstOrNull()
-            val qqTimeout = try {
-                QqTimeout.valueOf(
-                    context.dataStore.data.first()[QqTimeoutKey] ?: QqTimeout.Sec8.name
-                ).seconds
-            } catch (_: Exception) {
-                8
-            }
-            try {
-                withTimeout(qqTimeout * 1000L) {
-                    if (localSong != null) {
-                        fetchQQLyric(localSong)
-                    } else {
-                        autoSearchAndPickBest(metadata)
-                    }
+                val localSong = qqSongRepository.getQQSong(songId).firstOrNull()
+                val qqTimeout = try {
+                    QqTimeout.valueOf(
+                        context.dataStore.data.first()[QqTimeoutKey] ?: QqTimeout.Sec8.name
+                    ).seconds
+                } catch (_: Exception) {
+                    8
                 }
-            } catch (_: TimeoutCancellationException) {
-                qqLyricResult.value = Resource.Error("QQ timed out")
-            }
+                try {
+                    withTimeout(qqTimeout * 1000L) {
+                        if (localSong != null) {
+                            fetchQQLyric(localSong)
+                        } else {
+                            autoSearchAndPickBest(metadata)
+                        }
+                    }
+                } catch (_: TimeoutCancellationException) {
+                    qqLyricResult.value = Resource.Error("QQ timed out")
+                }
 
-            // 预加载已有 QQSong 时，补充填充搜索结果供 Sheet 使用
-            if (localSong != null) {
-                launch { searchAndMatchBest(metadata) }
+                if (localSong != null) {
+                    launch { searchAndMatchBest(metadata) }
+                }
             }
+        }
+    }
+
+    private suspend fun fetchMusetagLyric(musetagId: String, mediaId: String) {
+        try {
+            val result = com.ljyh.mei.musetag.MusetagClient.fetchLyrics(musetagId).getOrNull() ?: return
+            if (currentSongId != mediaId) return
+            val ttml = result.ttmlContent
+            val lrc = result.lrcContent
+            val data = when {
+                !ttml.isNullOrBlank() && ttml.contains("www.w3.org/ns/ttml") -> {
+                    LyricData(
+                        isVerbatim = true,
+                        source = LyricSource.Musetag,
+                        lyricLine = TTMLParser().parse(ttml),
+                    )
+                }
+                !lrc.isNullOrBlank() -> {
+                    LyricData(
+                        isVerbatim = false,
+                        source = LyricSource.Musetag,
+                        lyricLine = LRCParser.parse(lrc, null),
+                    )
+                }
+                else -> {
+                    if (currentSongId == mediaId) {
+                        _lyricData.value = createDefaultLyricData("暂无歌词", source = LyricSource.Empty)
+                    }
+                    return
+                }
+            }
+            if (currentSongId == mediaId) {
+                _lyricData.value = data
+                lyricCache[mediaId] = data
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Musetag lyric fetch failed")
         }
     }
 

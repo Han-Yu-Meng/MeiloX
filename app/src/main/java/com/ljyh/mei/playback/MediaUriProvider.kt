@@ -5,6 +5,8 @@ import androidx.core.net.toUri
 import com.ljyh.mei.data.model.api.GetSongUrlV1
 import com.ljyh.mei.data.network.api.ApiService
 import com.ljyh.mei.di.repository.SongRepository
+import com.ljyh.mei.musetag.MusetagClient
+import com.ljyh.mei.musetag.MusetagStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.firstOrNull
 import timber.log.Timber
@@ -41,10 +43,26 @@ class MediaUriProvider @Inject constructor(
 
     internal suspend fun resolveMediaSource(mediaId: String, quality: String): ResolvedMediaSource {
         val requestedQuality = normalizePlaybackQuality(quality)
+
+        // musetag 本地流优先，禁止回退网易云接口（会卡死）
+        MusetagStore.audioUrlForMediaId(mediaId)?.let { url ->
+            return ResolvedMediaSource(
+                uri = url.toUri(),
+                actualQuality = requestedQuality,
+                cacheKey = mediaId,
+            )
+        }
+        if (MusetagClient.isLoggedIn() && MusetagStore.library.songs.isNotEmpty()) {
+            throw IOException("Not in musetag library: $mediaId")
+        }
+
         val localPath = songRepository.getSong(mediaId).firstOrNull()?.path
             ?: songRepository.getSong("local_$mediaId").firstOrNull()?.path
         if (localPath != null) {
-            if (localPath.startsWith("content://")) {
+            if (localPath.startsWith("content://") ||
+                localPath.startsWith("http://") ||
+                localPath.startsWith("https://")
+            ) {
                 return ResolvedMediaSource(Uri.parse(localPath), requestedQuality, cacheKey = null)
             }
             val file = File(localPath)

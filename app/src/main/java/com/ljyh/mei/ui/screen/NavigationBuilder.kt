@@ -132,6 +132,10 @@ fun NavGraphBuilder.navigationBuilder(
         NeteaseLoginScreen()
     }
 
+    composable(Screen.MusetagLogin.route) {
+        com.ljyh.mei.ui.screen.musetag.MusetagLoginScreen()
+    }
+
     composable(Screen.AccountHome.route) {
         AccountHomeScreen()
     }
@@ -363,6 +367,7 @@ fun navigationEntry(
         route == Screen.ListenTogether.route -> ListenTogetherScreen()
         route == Screen.SongRecognition.route -> SongRecognitionScreen()
         route == Screen.NeteaseLogin.route -> NeteaseLoginScreen()
+        route == Screen.MusetagLogin.route -> com.ljyh.mei.ui.screen.musetag.MusetagLoginScreen()
         route == Screen.AccountHome.route -> AccountHomeScreen()
         route == Screen.Test.route -> Test()
         route == Screen.Setting.route -> SettingScreen(scrollBehavior)

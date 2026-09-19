@@ -39,6 +39,13 @@ val FloatingLyricsFontScaleKey = floatPreferencesKey("floatingLyrics.fontScale")
 val CookieKey = stringPreferencesKey("cookie")
 val MusicQualityKey = stringPreferencesKey("musicQuality")
 
+// Musetag Harmony 本地服务器
+val MusetagServerKey = stringPreferencesKey("musetag.server")
+val MusetagSessionKey = stringPreferencesKey("musetag.session")
+val MusetagUsernameKey = stringPreferencesKey("musetag.username")
+val MusetagUserIdKey = stringPreferencesKey("musetag.userId")
+
+
 
 val CoverStyleKey = stringPreferencesKey("coverStyle")
 val DynamicThemeKey = booleanPreferencesKey("dynamicTheme")

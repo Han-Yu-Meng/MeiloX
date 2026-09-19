@@ -17,6 +17,8 @@ class AppContext : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // 后台预读 musetag 配置，避免 UI 线程阻塞 DataStore
+        com.ljyh.mei.musetag.MusetagClient.preloadFromDisk()
     }
 
     companion object {

@@ -716,6 +716,14 @@ class MusicService : MediaLibraryService(),
 
         return ResolvingDataSource.Factory(getCacheDataSourceFactory(context)) { dataSpec ->
             val mediaId = dataSpec.key ?: error("No media key")
+            // 1) musetag 优先：避免 Room / 网易云 / DataStore 造成 ANR
+            val musetagUri = com.ljyh.mei.musetag.MusetagStore.audioUrlForMediaId(mediaId)
+            if (musetagUri != null) {
+                return@Factory dataSpec.buildUpon()
+                    .setUri(Uri.parse(musetagUri))
+                    .setKey(mediaId)
+                    .build()
+            }
             val quality = context.dataStore[MusicQualityKey]
                 ?.let(::normalizePlaybackQuality)
                 ?: MusicQuality.EXHIGH.text
@@ -725,9 +733,14 @@ class MusicService : MediaLibraryService(),
                 song?.path
             }
             if (localFilePath != null) {
+                if (localFilePath.startsWith("http://") || localFilePath.startsWith("https://")) {
+                    return@Factory dataSpec.buildUpon()
+                        .setUri(Uri.parse(localFilePath))
+                        .setKey(null)
+                        .build()
+                }
                 val file = File(localFilePath)
                 if (file.exists()) {
-                    Timber.tag("ResolvingDataSource").d("Using local file for mediaId: $mediaId, filePath: ${file.path}")
                     return@Factory dataSpec.buildUpon()
                         .setUri(Uri.fromFile(file))
                         .setKey(null)
@@ -736,7 +749,6 @@ class MusicService : MediaLibraryService(),
             }
             val fullyCachedKey = findFullyCachedPlaybackKey(simpleCache, mediaId, quality)
             if (fullyCachedKey != null) {
-                Timber.tag("ResolvingDataSource").d("Fully cached on disk: $mediaId")
                 return@Factory dataSpec.buildUpon()
                     .setKey(fullyCachedKey)
                     .build()

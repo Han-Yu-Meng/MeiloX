@@ -263,16 +263,16 @@ class MainActivity : ComponentActivity() {
             var active by rememberSaveable {
                 mutableStateOf(false)
             }
-            val dynamicTheme by rememberPreference(DynamicThemeKey, defaultValue = true)
+            val dynamicTheme by rememberPreference(DynamicThemeKey, defaultValue = false)
             val accentColorArgb by rememberPreference(AccentColorKey, DefaultAccentColorArgb)
             val appAppearance by rememberEnumPreference(AppAppearanceKey, AppAppearance.System)
             val (lastSelectedTab, setLastSelectedTab) = rememberPreference(LastSelectedTabKey, Index.Home.name)
             val recognizeClipboardLinks by rememberPreference(RecognizeClipboardLinksKey, false)
-            val podcastsEnabled by rememberPreference(PodcastsEnabledKey, defaultValue = true)
-            val downloadsEnabled by rememberPreference(DownloadsEnabledKey, defaultValue = true)
-            val cloudMusicEnabled by rememberPreference(CloudMusicEnabledKey, defaultValue = true)
-            val listeningHistoryEnabled by rememberPreference(ListeningHistoryEnabledKey, defaultValue = true)
-            val findMusicTabEnabled by rememberPreference(FindMusicTabEnabledKey, defaultValue = true)
+            val podcastsEnabled by rememberPreference(PodcastsEnabledKey, defaultValue = false)
+            val downloadsEnabled by rememberPreference(DownloadsEnabledKey, defaultValue = false)
+            val cloudMusicEnabled by rememberPreference(CloudMusicEnabledKey, defaultValue = false)
+            val listeningHistoryEnabled by rememberPreference(ListeningHistoryEnabledKey, defaultValue = false)
+            val findMusicTabEnabled by rememberPreference(FindMusicTabEnabledKey, defaultValue = false)
             val libraryTabEnabled by rememberPreference(LibraryTabEnabledKey, defaultValue = true)
             val podcastsTabEnabled by rememberPreference(PodcastsTabEnabledKey, defaultValue = false)
             val downloadsTabEnabled by rememberPreference(DownloadsTabEnabledKey, defaultValue = false)
@@ -288,22 +288,24 @@ class MainActivity : ComponentActivity() {
             var clipboardInspected by rememberSaveable { mutableStateOf(false) }
             var startupUpdateResult by remember { mutableStateOf<VersionUpdateResult?>(null) }
 
-            LaunchedEffect(Unit) {
-                val result = VersionUpdateChecker.check(BuildConfig.VERSION_NAME)
-                if (result is VersionUpdateResult.UpdateAvailable) {
-                    startupUpdateResult = result
-                }
+            // musetag 登录前：降低玻璃采样 / 延迟播放服务 / 关掉更新检查
+            val (musetagSession) = rememberPreference(com.ljyh.mei.constants.MusetagSessionKey, "")
+            val routeForChrome by remember {
+                derivedStateOf { (backStack.lastOrNull() as? MeiRoute)?.route }
             }
+            val lightChrome = musetagSession.isBlank() ||
+                routeForChrome == Screen.MusetagLogin.route ||
+                routeForChrome == Screen.NeteaseLogin.route
 
             var isMeasured by remember { mutableStateOf(false) }
-            DisposableEffect(Unit) {
+            DisposableEffect(musetagSession) {
+                if (musetagSession.isBlank()) {
+                    return@DisposableEffect onDispose { }
+                }
                 val intent = Intent(context, MusicService::class.java)
-
                 val connection = object : ServiceConnection {
                     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-                        Timber.tag("MainActivity").d("Service Connected") // 添加日志
                         if (service is MusicService.MusicBinder) {
-                            // 更新 State，触发 Recomposition
                             playerConnection = PlayerConnection(
                                 context,
                                 service,
@@ -314,19 +316,14 @@ class MainActivity : ComponentActivity() {
                     }
 
                     override fun onServiceDisconnected(name: ComponentName?) {
-                        Timber.tag("MainActivity").d("Service Disconnected")
-                        playerConnection?.dispose() // 假设你有 dispose 方法清理资源
+                        playerConnection?.dispose()
                         playerConnection = null
                     }
                 }
-
-                // 启动并绑定服务
                 context.startService(intent)
                 context.bindService(intent, connection, Context.BIND_AUTO_CREATE)
-
                 onDispose {
-                    // Compose 销毁时解绑
-                    context.unbindService(connection)
+                    runCatching { context.unbindService(connection) }
                     playerConnection = null
                 }
             }
@@ -734,15 +731,17 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         } else {
-                            // Page content is the backdrop source for the
-                            // floating mini player and bottom controls. Its own
-                            // glass controls sample the static backdrop instead
-                            // of this source, avoiding a feedback loop.
-                            Box(
-                                modifier = Modifier
+                            // 登录前/登录页：不做 layerBackdrop 逐帧采样，避免掉帧
+                            val pageModifier = if (lightChrome) {
+                                Modifier.fillMaxSize()
+                            } else {
+                                Modifier
                                     .fillMaxSize()
                                     .layerBackdrop(bottomBackdrop)
-                                    .trackBackdropPosition(bottomBackdrop),
+                                    .trackBackdropPosition(bottomBackdrop)
+                            }
+                            Box(
+                                modifier = pageModifier,
                             ) {
                                 CompositionLocalProvider(
                                     LocalGlassBackdrop provides glassBackdrop,
@@ -800,8 +799,9 @@ class MainActivity : ComponentActivity() {
                                         },
                                         transitionEffects = remember(
                                             navController.usesMiuixTransitionEffects,
+                                            lightChrome,
                                         ) {
-                                            if (navController.usesMiuixTransitionEffects) {
+                                            if (!lightChrome && navController.usesMiuixTransitionEffects) {
                                                 NavDisplayTransitionEffects(
                                                     enableCornerClip = true,
                                                     dimAmount = 0.5f,

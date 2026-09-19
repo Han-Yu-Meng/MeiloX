@@ -69,11 +69,13 @@ object CacheManager {
         // 1. 先配置你的 OkHttp (负责处理网络流)
         val okHttpClient = OkHttpClient.Builder()
             .addInterceptor { chain ->
-                chain.proceed(
-                    chain.request().newBuilder()
-                        .addHeader("User-Agent", UserAgent)
-                        .build()
-                )
+                val builder = chain.request().newBuilder()
+                    .addHeader("User-Agent", UserAgent)
+                val session = com.ljyh.mei.musetag.MusetagClient.currentSession()
+                if (session.isNotBlank()) {
+                    builder.header("Cookie", "mt_session=$session")
+                }
+                chain.proceed(builder.build())
             }
             .build()
         val okHttpDataSourceFactory = OkHttpDataSource.Factory(okHttpClient)

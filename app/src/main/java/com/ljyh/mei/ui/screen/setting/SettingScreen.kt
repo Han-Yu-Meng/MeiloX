@@ -10,6 +10,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -28,6 +29,7 @@ import com.ljyh.mei.ui.local.LocalPlayerAwareWindowInsets
 import com.ljyh.mei.ui.screen.Screen
 import com.ljyh.mei.ui.screen.account.logoutNetease
 import com.ljyh.mei.utils.rememberPreference
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,20 +49,25 @@ fun SettingScreen(
         item { SettingsSectionTitle(stringResource(R.string.settings_account)) }
         item {
             IosGroupedList {
-                if (cookie.isBlank()) {
-                    SettingsEntry(stringResource(R.string.netease_login), "person.crop.circle", false) {
-                        Screen.NeteaseLogin.navigate(navController)
+                val musetagSession by rememberPreference(com.ljyh.mei.constants.MusetagSessionKey, "")
+                val musetagUser by rememberPreference(com.ljyh.mei.constants.MusetagUsernameKey, "")
+                if (musetagSession.isBlank()) {
+                    SettingsEntry(stringResource(R.string.musetag_login_title), "person.crop.circle", false) {
+                        Screen.MusetagLogin.navigate(navController)
                     }
                 } else {
                     SettingsEntry(
-                        userNickname.ifBlank { stringResource(R.string.account_home) },
+                        musetagUser.ifBlank { stringResource(R.string.musetag_library) },
                         "person.crop.circle",
                         false,
                     ) {
-                        Screen.AccountHome.navigate(navController)
+                        Screen.Home.navigate(navController)
                     }
-                    SettingsEntry(stringResource(R.string.netease_logout), "rectangle.portrait.and.arrow.forward") {
-                        logoutNetease(context)
+                    SettingsEntry(stringResource(R.string.musetag_logout), "rectangle.portrait.and.arrow.forward") {
+                        kotlinx.coroutines.MainScope().launch {
+                            com.ljyh.mei.musetag.MusetagClient.clearSession()
+                            Screen.Home.navigate(navController)
+                        }
                     }
                 }
             }
