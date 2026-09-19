@@ -335,8 +335,22 @@ fun NavGraphBuilder.navigationBuilder(
     composable(
         route = "${Screen.ArtistSongs.route}/{id}",
         arguments = listOf(navArgument("id") { type = NavType.StringType }),
-    ) {
-        ArtistSongsScreen(id = it.arguments!!.getString("id")!!)
+    ) { entry ->
+        val raw = entry.arguments?.getString("id").orEmpty()
+        if (com.ljyh.mei.musetag.MusetagClient.isLoggedIn()) {
+            com.ljyh.mei.ui.screen.musetag.MusetagArtistSongsScreen(raw)
+        } else {
+            ArtistSongsScreen(id = raw)
+        }
+    }
+
+    composable(
+        route = "${Screen.MusetagArtistAlbums.route}/{id}",
+        arguments = listOf(navArgument("id") { type = NavType.StringType }),
+    ) { entry ->
+        com.ljyh.mei.ui.screen.musetag.MusetagArtistAlbumsScreen(
+            entry.arguments?.getString("id").orEmpty()
+        )
     }
 
     composable(Screen.History.route) {
@@ -481,8 +495,17 @@ fun navigationEntry(
             }
         }
         route.startsWith("${Screen.PlayList.route}/") -> {
-            route.substringAfter("${Screen.PlayList.route}/").toLongOrNull()
-                ?.let { PlaylistScreen(id = it) }
+            val raw = route.substringAfter("${Screen.PlayList.route}/")
+            if (raw == "__all__" || raw.isBlank()) {
+                com.ljyh.mei.ui.screen.musetag.MusetagPlaylistsScreen()
+            } else {
+                val decoded = com.ljyh.mei.ui.screen.musetag.decodeMusetagId(raw)
+                if (decoded.startsWith("pl_") || com.ljyh.mei.musetag.MusetagClient.isLoggedIn()) {
+                    com.ljyh.mei.ui.screen.musetag.MusetagPlaylistDetailScreen(raw)
+                } else {
+                    decoded.toLongOrNull()?.let { PlaylistScreen(id = it) }
+                }
+            }
         }
         route.startsWith("${Screen.Album.route}/") -> {
             val raw = route.substringAfter("${Screen.Album.route}/")
@@ -496,8 +519,18 @@ fun navigationEntry(
                 decoded.toLongOrNull()?.let { AlbumDetailScreen(id = it) }
             }
         }
+        route.startsWith("${Screen.MusetagArtistAlbums.route}/") -> {
+            com.ljyh.mei.ui.screen.musetag.MusetagArtistAlbumsScreen(
+                route.substringAfter("${Screen.MusetagArtistAlbums.route}/")
+            )
+        }
         route.startsWith("${Screen.ArtistSongs.route}/") -> {
-            ArtistSongsScreen(id = route.substringAfter("${Screen.ArtistSongs.route}/"))
+            val raw = route.substringAfter("${Screen.ArtistSongs.route}/")
+            if (com.ljyh.mei.musetag.MusetagClient.isLoggedIn()) {
+                com.ljyh.mei.ui.screen.musetag.MusetagArtistSongsScreen(raw)
+            } else {
+                ArtistSongsScreen(id = raw)
+            }
         }
         route.startsWith("${Screen.Artist.route}/") -> {
             val raw = route.substringAfter("${Screen.Artist.route}/")

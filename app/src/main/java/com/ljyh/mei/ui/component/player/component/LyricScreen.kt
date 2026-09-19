@@ -229,16 +229,7 @@ fun LyricScreen(
                     offset = 48.dp
                 )
                 }
-
-                LyricSourceBadge(
-                    source = lyricData.source,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding( bottom = 8.dp)
-                        .onGloballyPositioned { badgeBounds = it.boundsInParent() },
-                    onClick = onClick,
-                    onLongClick = onLongClick
-                )
+                // 歌词来源徽章（网易云/QQ 等）已完全移除
             }
         }
     }

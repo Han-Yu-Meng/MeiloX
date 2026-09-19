@@ -356,20 +356,10 @@ fun AppleMusicPlayer(
                                 .weight(1f)
                                 .padding(horizontal = PlayerHorizontalPadding),
                             onClick = {
-                                mediaMetadata?.let {
-                                    if (overlayHandler.currentOverlayValue is OverlayState.None) {
-                                        stateContainer.playerViewModel.searchQQSong(it.title)
-                                        overlayHandler.showQQMusicSelection(
-                                            mediaMetadata = it
-                                        )
-                                    }
-                                }
+                                // 已移除：点击歌词搜索 QQ 音乐
                             },
-                            onLongClick = { source ->
-                                if (source == LyricSource.QQMusic && mediaMetadata != null) {
-                                    stateContainer.playerViewModel.deleteSongById(id = mediaMetadata!!.id.toString())
-                                    android.widget.Toast.makeText(context, "已删除QQ音乐歌词", android.widget.Toast.LENGTH_SHORT).show()
-                                }
+                            onLongClick = { _ ->
+                                // 已移除：QQ 歌词删除入口
                             },
                             controlsVisible = stateContainer.controlsVisible,
                             onToggleControls = { stateContainer.controlsVisible = it },

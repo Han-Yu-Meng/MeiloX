@@ -67,6 +67,14 @@ class DownloadWorker(
                     .readTimeout(300, TimeUnit.SECONDS)
                     .writeTimeout(30, TimeUnit.SECONDS)
                     .followRedirects(true)
+                    .addInterceptor { chain ->
+                        val b = chain.request().newBuilder()
+                        val session = runCatching { com.ljyh.mei.musetag.MusetagClient.currentSession() }.getOrNull()
+                        if (!session.isNullOrBlank()) {
+                            b.header("Cookie", "mt_session=$session")
+                        }
+                        chain.proceed(b.build())
+                    }
                     .build().also { sharedClient = it }
             }
         }

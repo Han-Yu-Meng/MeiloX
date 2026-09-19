@@ -68,8 +68,8 @@ fun FluidBackground(
 
     val (flowSpeed) = rememberPreference(MeshFlowSpeedKey, defaultValue = 0.25f)
     val (renderScale) = rememberPreference(MeshRenderScaleKey, defaultValue = 0.75f)
-    val (staticMode) = rememberPreference(MeshStaticModeKey, defaultValue = false)
-    val (meshPlaying) = rememberPreference(MeshPlayingKey, defaultValue = true)
+    val (staticMode) = rememberPreference(MeshStaticModeKey, defaultValue = true)
+    val (meshPlaying) = rememberPreference(MeshPlayingKey, defaultValue = false)
     val (volumeScale) = rememberPreference(MeshLowFreqVolumeKey, defaultValue = 0.1f)
     val (subdivision) = rememberPreference(MeshSubdivisionKey, defaultValue = 50)
 
@@ -125,7 +125,9 @@ fun FluidBackground(
     }
 
     // 2. 组装当前需要传递给 View 的所有状态
-    val shouldAnimate = !meshPlaying || isPlaying
+    // 强制静态：暂停/播放都不做 mesh 动画与像素拷贝，消除闪烁
+    val shouldAnimate = false
+    val forceStatic = true
     val pixelCopyHandler = remember { Handler(Looper.getMainLooper()) }
     val captureBuffers = remember { arrayOfNulls<Bitmap>(3) }
     val captureState = remember { IntArray(3) }
@@ -133,13 +135,13 @@ fun FluidBackground(
     // Configuration changes are infrequent compared with sheet/bass recompositions. Apply
     // renderer settings from their state boundary instead of queueing GL work from every
     // AndroidView update pass.
-    LaunchedEffect(meshView, flowSpeed, renderScale, subdivision, staticMode, shouldAnimate) {
+    LaunchedEffect(meshView, flowSpeed, renderScale, subdivision) {
         val view = meshView ?: return@LaunchedEffect
         view.setFlowSpeed(flowSpeed)
         view.setRenderScale(renderScale)
         view.setSubdivision(subdivision)
-        view.setStaticMode(staticMode)
-        view.setPlaying(shouldAnimate)
+        view.setStaticMode(true)
+        view.setPlaying(false)
     }
 
     LaunchedEffect(meshView, lifecycleStarted) {
@@ -147,22 +149,17 @@ fun FluidBackground(
     }
 
     LaunchedEffect(meshView, backgroundActive) {
-        meshView?.setRenderingRequested(backgroundActive)
+        meshView?.setRenderingRequested(backgroundActive && !forceStatic)
     }
 
-    // SurfaceView is not part of Compose's graphics-layer recording. Copy a small live frame
-    // instead; glass blurs it heavily, so this resolution preserves the visual result without
-    // reading a full-screen buffer every frame. Static mode captures through the mesh fade-in
-    // and then stops, while animated mode keeps the sample moving at roughly 15 fps.
-    LaunchedEffect(meshView, backdropFrame, albumBitmap, staticMode, shouldAnimate, backgroundActive) {
+    // 静态背景：只做一次 backdrop 采样，之后停止，避免暂停时持续闪烁
+    LaunchedEffect(meshView, backdropFrame, albumBitmap, backgroundActive) {
         if (!backgroundActive) return@LaunchedEffect
         val view = meshView ?: return@LaunchedEffect
         val target = backdropFrame ?: return@LaunchedEffect
+        delay(300)
         var attempts = 0
-        val continuous = !staticMode && shouldAnimate
-
-        delay(BackdropCaptureIntervalMillis)
-        while (isActive && (continuous || attempts < StaticBackdropCaptureAttempts)) {
+        while (isActive && attempts < 8) {
             val sourceWidth = view.width
             val sourceHeight = view.height
             if (view.isAttachedToWindow && sourceWidth > 0 && sourceHeight > 0) {
@@ -187,15 +184,15 @@ fun FluidBackground(
                     }
                     captureState[2] = 0
                 }
-
-                val bitmap = captureBuffers[captureState[2]] ?: return@LaunchedEffect
+                val bitmap = captureBuffers[captureState[2]] ?: break
                 captureState[2] = (captureState[2] + 1) % captureBuffers.size
                 if (copySurfaceFrame(view, bitmap, pixelCopyHandler)) {
                     target.value = bitmap.asImageBitmap()
+                    break
                 }
                 attempts++
             }
-            delay(BackdropCaptureIntervalMillis)
+            delay(200)
         }
     }
 
@@ -217,6 +214,11 @@ fun FluidBackground(
                     this.alpha = alpha.coerceIn(0f, 1f)
                     // 初始化时的默认值
                     setFlowSpeed(flowSpeed)
+                    setRenderScale(renderScale)
+                    setSubdivision(subdivision)
+                    setStaticMode(true)
+                    setPlaying(false)
+                    setRenderingRequested(false)
                     setRenderScale(renderScale)
                     setSubdivision(subdivision)
                     setStaticMode(staticMode)

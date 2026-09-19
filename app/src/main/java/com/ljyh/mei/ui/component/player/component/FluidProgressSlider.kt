@@ -205,17 +205,6 @@ fun FluidProgressSlider(
                 color = Color.White.copy(alpha = 0.9f),
             )
 
-            // 中间：音质 (复用你原本的逻辑)
-            PlayerQualityDropdown(
-                quality = musicQuality,
-                onQualitySelected = { playerConnection?.changeQuality(it) },
-                style = commonTextStyle.copy(fontSize = 10.sp),
-                color = Color.White.copy(alpha = 0.6f),
-            )
-
-            // 右侧：剩余时间 (Apple Music 风格通常显示剩余时间，即 "-03:45")
-            // 这里为了兼容性，我先显示总时长，如果你想改剩余时间，可以改为:
-            // "-" + makeTimeString(duration - sliderPosition.toLong())
             Text(
                 text = if (duration > 0) makeTimeString(duration) else "-:--",
                 style = commonTextStyle,

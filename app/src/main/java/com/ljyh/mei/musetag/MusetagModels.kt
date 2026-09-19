@@ -23,6 +23,8 @@ data class MusetagPlaylist(
     @SerializedName("title") val title: String?,
     @SerializedName("content") val content: List<MusetagPlaylistItem>?,
     @SerializedName("coverUrl") val coverUrl: String? = null,
+    @SerializedName("createdAt") val createdAt: Long? = null,
+    @SerializedName("updatedAt") val updatedAt: Long? = null,
 )
 
 data class MusetagPlaylistItem(

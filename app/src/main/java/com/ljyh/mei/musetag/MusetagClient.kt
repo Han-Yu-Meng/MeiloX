@@ -53,15 +53,17 @@ object MusetagClient {
             try {
                 val prefs = runBlocking(Dispatchers.IO) {
                     val data = AppContext.instance.dataStore.data.first()
-                    Triple(
+                    arrayOf(
                         normalizeServer(data[MusetagServerKey] ?: ""),
                         data[MusetagSessionKey] ?: "",
                         data[MusetagUsernameKey] ?: "",
+                        data[MusetagUserIdKey] ?: "",
                     )
                 }
-                if (prefs.first.isNotBlank()) cachedBase = prefs.first
-                if (prefs.second.isNotBlank()) cachedSession = prefs.second
-                if (prefs.third.isNotBlank()) cachedUsername = prefs.third
+                if (prefs[0].isNotBlank()) cachedBase = prefs[0]
+                if (prefs[1].isNotBlank()) cachedSession = prefs[1]
+                if (prefs[2].isNotBlank()) cachedUsername = prefs[2]
+                if (prefs[3].isNotBlank()) cachedUserId = prefs[3]
                 prefsLoaded = true
                 writeAuthSnapshot()
             } catch (_: Exception) {
@@ -125,6 +127,67 @@ object MusetagClient {
         return cachedUsername ?: ""
     }
 
+    @Volatile private var cachedUserId: String = ""
+
+    fun currentUserId(): String {
+        MusetagStore.user?.id?.takeIf { it.isNotBlank() }?.let { return it }
+        ensurePrefsLoaded()
+        return cachedUserId
+    }
+
+    suspend fun syncLikes(
+        likedSongs: List<MusetagLiked>? = null,
+        likedAlbums: List<MusetagLiked>? = null,
+        likedArtists: List<MusetagLiked>? = null,
+    ): Result<MusetagUser> = withContext(Dispatchers.IO) {
+        runCatching {
+            val uid = MusetagStore.user?.id ?: run {
+                ensurePrefsLoaded()
+                if (cachedUserId.isBlank()) {
+                    cachedUserId = AppContext.instance.dataStore.data.first()[MusetagUserIdKey].orEmpty()
+                }
+                cachedUserId
+            }
+            if (uid.isBlank()) error("未登录")
+            val payload = JSONObject().put("id", uid)
+            likedSongs?.let {
+                payload.put("likedSongs", JSONArray().apply {
+                    it.forEach { l ->
+                        put(JSONObject().put("id", l.id).put("date", l.date ?: System.currentTimeMillis()))
+                    }
+                })
+            }
+            likedAlbums?.let {
+                payload.put("likedAlbums", JSONArray().apply {
+                    it.forEach { l ->
+                        put(JSONObject().put("id", l.id).put("date", l.date ?: System.currentTimeMillis()))
+                    }
+                })
+            }
+            likedArtists?.let {
+                payload.put("likedArtists", JSONArray().apply {
+                    it.forEach { l ->
+                        put(JSONObject().put("id", l.id).put("date", l.date ?: System.currentTimeMillis()))
+                    }
+                })
+            }
+            val request = Request.Builder()
+                .url(absoluteUrl("/api/user/sync"))
+                .post(payload.toString().toRequestBody(jsonMedia))
+                .header("Content-Type", "application/json")
+            val session = currentSession()
+            if (session.isNotBlank()) request.header("Cookie", "mt_session=$session")
+            okHttp.newCall(request.build()).execute().use { resp ->
+                val body = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) error("同步失败 HTTP ${resp.code}")
+                parseUser(body).also {
+                    MusetagStore.user = it
+                    if (it.id.isNotBlank()) cachedUserId = it.id
+                }
+            }
+        }
+    }
+
     fun isLoggedIn(): Boolean = currentSession().isNotBlank() && currentBase().isNotBlank()
 
     fun absoluteUrl(pathOrUrl: String): String {
@@ -158,6 +221,7 @@ object MusetagClient {
         cachedBase = normalized
         cachedSession = session
         if (username != null) cachedUsername = username
+        if (userId != null) cachedUserId = userId
         prefsLoaded = true
         writeAuthSnapshot()
     }
@@ -246,8 +310,10 @@ object MusetagClient {
 
     private fun parseUser(json: String): MusetagUser {
         val o = JSONObject(json)
+        val id = o.optString("id")
+        if (id.isNotBlank()) cachedUserId = id
         return MusetagUser(
-            id = o.optString("id"),
+            id = id,
             username = o.optString("username"),
             role = o.optString("role"),
             avatarUrl = o.optString("avatarUrl"),
@@ -275,14 +341,63 @@ object MusetagClient {
         if (arr == null) return emptyList()
         return (0 until arr.length()).mapNotNull { i ->
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val contentArr = o.optJSONArray("content")
+            val content = contentArr?.let { c ->
+                (0 until c.length()).mapNotNull { j ->
+                    val item = c.optJSONObject(j) ?: return@mapNotNull null
+                    val sid = item.optString("songId")
+                    if (sid.isBlank()) null
+                    else MusetagPlaylistItem(sid, if (item.has("date")) item.optLong("date") else System.currentTimeMillis())
+                }
+            }
             MusetagPlaylist(
                 id = o.optString("id"),
                 title = o.optString("title"),
-                content = null,
+                content = content,
                 coverUrl = o.optString("coverUrl").ifBlank { null },
+                createdAt = if (o.has("createdAt")) o.optLong("createdAt") else null,
+                updatedAt = if (o.has("updatedAt")) o.optLong("updatedAt") else null,
             )
         }
     }
+
+    suspend fun syncPlaylists(playlists: List<MusetagPlaylist>): Result<MusetagUser> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val uid = currentUserId().ifBlank { error("未登录") }
+                val arr = JSONArray()
+                playlists.forEach { p ->
+                    val po = JSONObject()
+                        .put("id", p.id)
+                        .put("title", p.title.orEmpty())
+                        .put("coverUrl", p.coverUrl ?: JSONObject.NULL)
+                        .put("createdAt", p.createdAt ?: System.currentTimeMillis())
+                        .put("updatedAt", p.updatedAt ?: System.currentTimeMillis())
+                    val content = JSONArray()
+                    (p.content ?: emptyList()).forEach { item ->
+                        content.put(
+                            JSONObject()
+                                .put("songId", item.songId)
+                                .put("date", item.date ?: System.currentTimeMillis())
+                        )
+                    }
+                    po.put("content", content)
+                    arr.put(po)
+                }
+                val payload = JSONObject().put("id", uid).put("playlists", arr)
+                val request = Request.Builder()
+                    .url(absoluteUrl("/api/user/sync"))
+                    .post(payload.toString().toRequestBody(jsonMedia))
+                    .header("Content-Type", "application/json")
+                val session = currentSession()
+                if (session.isNotBlank()) request.header("Cookie", "mt_session=$session")
+                okHttp.newCall(request.build()).execute().use { resp ->
+                    val body = resp.body?.string().orEmpty()
+                    if (!resp.isSuccessful) error("同步歌单失败 HTTP ${resp.code}")
+                    parseUser(body).also { MusetagStore.user = it }
+                }
+            }
+        }
 
     private fun parseSongs(arr: JSONArray?): List<MusetagSong> {
         if (arr == null) return emptyList()

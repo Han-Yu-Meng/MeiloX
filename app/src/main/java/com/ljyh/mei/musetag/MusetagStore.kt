@@ -71,20 +71,20 @@ object MusetagStore {
         library.songs.filter { it.albumId == albumId }
             .sortedWith(compareBy({ it.discNumber ?: 1 }, { it.trackNumber ?: 0 }))
 
-    /** 全库歌曲：按加入时间（dateAdded）升序，先加入的先展示 */
+    /** 全库歌曲：新加入的在前（dateAdded 降序） */
     fun librarySongsSorted(): List<MusetagSong> =
-        library.songs.sortedBy { it.dateAdded ?: 0L }
+        library.songs.sortedByDescending { it.dateAdded ?: 0L }
 
-    /** 全库专辑：按专辑内最早 dateAdded 升序 */
+    /** 全库专辑：新加入的在前（专辑内最新 dateAdded 降序） */
     fun libraryAlbumsSorted(): List<MusetagAlbum> {
-        val albumJoin = HashMap<String, Long>()
+        val albumLatest = HashMap<String, Long>()
         library.songs.forEach { s ->
             val a = s.albumId ?: return@forEach
             val d = s.dateAdded ?: 0L
-            val prev = albumJoin[a]
-            if (prev == null || d < prev) albumJoin[a] = d
+            val prev = albumLatest[a]
+            if (prev == null || d > prev) albumLatest[a] = d
         }
-        return library.albums.sortedBy { albumJoin[it.id] ?: Long.MAX_VALUE }
+        return library.albums.sortedByDescending { albumLatest[it.id] ?: 0L }
     }
 
     /** 全库艺人：歌曲多的排前面 */
@@ -99,22 +99,136 @@ object MusetagStore {
         return library.artists.sortedByDescending { counts[it.id] ?: 0 }
     }
 
+    fun playlists(): List<MusetagPlaylist> = user?.playlists ?: emptyList()
+
+    fun findPlaylist(id: String): MusetagPlaylist? =
+        user?.playlists?.find { it.id == id }
+
+    fun playlistSongs(playlistId: String): List<MusetagSong> {
+        val p = findPlaylist(playlistId) ?: return emptyList()
+        val ids = p.content?.map { it.songId } ?: return emptyList()
+        return ids.mapNotNull { idToSong[it] }
+    }
+
+    suspend fun createPlaylist(title: String): MusetagPlaylist? {
+        val trimmed = title.trim()
+        if (trimmed.isBlank()) return null
+        val p = MusetagPlaylist(
+            id = "pl_${System.currentTimeMillis()}_${(0..999).random()}",
+            title = trimmed,
+            content = emptyList(),
+            createdAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis(),
+        )
+        val newList = listOf(p) + playlists()
+        return MusetagClient.syncPlaylists(newList).getOrNull()?.let { user = it; p }
+    }
+
+    suspend fun renamePlaylist(id: String, title: String): Boolean {
+        val trimmed = title.trim()
+        if (trimmed.isBlank()) return false
+        val newList = playlists().map {
+            if (it.id == id) it.copy(title = trimmed, updatedAt = System.currentTimeMillis()) else it
+        }
+        return MusetagClient.syncPlaylists(newList).getOrNull()?.let { user = it; true } ?: false
+    }
+
+    /** 添加歌曲；已存在则忽略。返回是否成功 */
+    suspend fun addSongToPlaylist(playlistId: String, songId: String): Boolean {
+        val p = findPlaylist(playlistId) ?: return false
+        if (p.content?.any { it.songId == songId } == true) return true
+        val newContent = (p.content ?: emptyList()) +
+            MusetagPlaylistItem(songId, System.currentTimeMillis())
+        val newList = playlists().map {
+            if (it.id == playlistId) it.copy(content = newContent, updatedAt = System.currentTimeMillis()) else it
+        }
+        return MusetagClient.syncPlaylists(newList).getOrNull()?.let { user = it; true } ?: false
+    }
+
+    suspend fun removeSongFromPlaylist(playlistId: String, songId: String): Boolean {
+        val p = findPlaylist(playlistId) ?: return false
+        val newContent = (p.content ?: emptyList()).filter { it.songId != songId }
+        val newList = playlists().map {
+            if (it.id == playlistId) it.copy(content = newContent, updatedAt = System.currentTimeMillis()) else it
+        }
+        return MusetagClient.syncPlaylists(newList).getOrNull()?.let { user = it; true } ?: false
+    }
+
+    suspend fun setPlaylistContent(playlistId: String, songIds: List<String>): Boolean {
+        val newContent = songIds.map { MusetagPlaylistItem(it, System.currentTimeMillis()) }
+        val newList = playlists().map {
+            if (it.id == playlistId) it.copy(content = newContent, updatedAt = System.currentTimeMillis()) else it
+        }
+        return MusetagClient.syncPlaylists(newList).getOrNull()?.let { user = it; true } ?: false
+    }
+
+    fun isSongLiked(songId: String): Boolean =
+        user?.likedSongs?.any { it.id == songId } == true
+
+    fun isSongLikedByMediaId(mediaId: String): Boolean {
+        val sid = mediaIdToSongId(mediaId) ?: return false
+        return isSongLiked(sid)
+    }
+
+    fun isArtistLiked(artistId: String): Boolean =
+        user?.likedArtists?.any { it.id == artistId } == true
+            || user?.likedArtists?.any { resolveArtist(artistId)?.id == it.id } == true
+
+    fun songIdOfMediaId(mediaId: String): String? = mediaIdToSongId(mediaId)
+
+    /** 播放器收藏：mediaId → musetag songId */
+    suspend fun toggleSongLikeByMediaId(mediaId: String): Boolean {
+        val sid = mediaIdToSongId(mediaId) ?: return false
+        return toggleSongLike(sid)
+    }
+
+    suspend fun toggleSongLike(songId: String): Boolean {
+        val liked = isSongLiked(songId)
+        val newList = if (liked) {
+            (user?.likedSongs ?: emptyList()).filter { it.id != songId }
+        } else {
+            (user?.likedSongs ?: emptyList()) + MusetagLiked(songId, System.currentTimeMillis())
+        }
+        val result = MusetagClient.syncLikes(likedSongs = newList)
+        result.onSuccess { user = it }
+        return !liked
+    }
+
+    suspend fun toggleArtistLike(artistId: String): Boolean {
+        val a = resolveArtist(artistId)
+        val id = a?.id ?: artistId
+        val liked = user?.likedArtists?.any { it.id == id } == true
+        val newList = if (liked) {
+            (user?.likedArtists ?: emptyList()).filter { it.id != id }
+        } else {
+            (user?.likedArtists ?: emptyList()) + MusetagLiked(id, System.currentTimeMillis())
+        }
+        val result = MusetagClient.syncLikes(likedArtists = newList)
+        result.onSuccess { user = it }
+        return !liked
+    }
+
     fun toMediaMetadata(song: MusetagSong): MediaMetadata {
         val mediaId = songIdToLong(song.id)
-        val artistName = artistName(song)
         val albumTitle = albumTitle(song)
         val cover = albumCover(song)
-        val artistId = song.artistId ?: song.artistIds?.firstOrNull()
+        val ids = song.artistIds?.takeIf { it.isNotEmpty() }
+            ?: listOfNotNull(song.artistId)
+        val artists = ids.mapNotNull { aid ->
+            val a = findArtist(aid)
+            MediaMetadata.Artist(
+                id = songIdToLong(aid),
+                name = a?.name ?: artistNameById[aid] ?: "未知艺术家",
+                picUrl = absoluteCover(a?.avatarUrl),
+            )
+        }.ifEmpty {
+            listOf(MediaMetadata.Artist(id = 0L, name = artistName(song), picUrl = null))
+        }
         return MediaMetadata(
             id = mediaId,
             title = song.title ?: "未知歌曲",
             coverUrl = cover,
-            artists = listOf(
-                MediaMetadata.Artist(
-                    id = artistId?.let { songIdToLong(it) } ?: 0L,
-                    name = artistName,
-                )
-            ),
+            artists = artists,
             duration = ((song.duration ?: 0.0) * 1000).toLong(),
             album = MediaMetadata.Album(
                 id = song.albumId?.let { songIdToLong(it) } ?: 0L,

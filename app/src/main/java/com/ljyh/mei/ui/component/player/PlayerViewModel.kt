@@ -109,6 +109,12 @@ class PlayerViewModel @Inject constructor(
     fun getLike(id: Long) {
         viewModelScope.launch {
             Timber.tag("PlayerViewModel").d("get like $id")
+            if (com.ljyh.mei.musetag.MusetagClient.isLoggedIn()) {
+                _like.value = Resource.Success(
+                    com.ljyh.mei.musetag.MusetagStore.isSongLikedByMediaId(id.toString())
+                )
+                return@launch
+            }
             _like.value = repository.checkSongLike(id)
         }
     }
@@ -117,6 +123,11 @@ class PlayerViewModel @Inject constructor(
     fun like(id: String) {
         viewModelScope.launch {
             try {
+                if (com.ljyh.mei.musetag.MusetagClient.isLoggedIn()) {
+                    val liked = com.ljyh.mei.musetag.MusetagStore.toggleSongLikeByMediaId(id)
+                    _like.value = Resource.Success(liked)
+                    return@launch
+                }
                 val currentLiked = (_like.value as? Resource.Success)?.data == true
                 repository.like(id, !currentLiked)
                 _like.value = Resource.Success(!currentLiked)
@@ -239,14 +250,41 @@ class PlayerViewModel @Inject constructor(
 
     fun downloadSong(metadata: MediaMetadata, context: android.content.Context, requestedQuality: MusicQuality? = null) {
         viewModelScope.launch {
-            val quality = requestedQuality ?: try {
-                val saved = AppContext.instance.dataStore[DownloadQualityKey]
-                if (saved != null) com.ljyh.mei.constants.DownloadQuality.valueOf(saved).toMusicQuality()
-                else MusicQuality.EXHIGH
-            } catch (_: Exception) {
-                MusicQuality.EXHIGH
+            // musetag：无音质区分，直接下载服务器原文件
+            if (com.ljyh.mei.musetag.MusetagClient.isLoggedIn()) {
+                val url = com.ljyh.mei.musetag.MusetagStore.audioUrlForMediaId(metadata.id.toString())
+                if (url.isNullOrBlank()) {
+                    android.widget.Toast.makeText(context, "无法获取歌曲链接", android.widget.Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                val downloadPath = AppContext.instance.dataStore[DownloadPathKey]
+                    ?: com.ljyh.mei.utils.DownloadManager.getDefaultDownloadPath()
+                val filePath = com.ljyh.mei.musetag.MusetagStore.songIdOfMediaId(metadata.id.toString())
+                    ?.let { com.ljyh.mei.musetag.MusetagStore.library.songs.find { s -> s.id == it }?.filePath }
+                val ext = filePath?.substringAfterLast('.', "")?.takeIf { it.isNotBlank() } ?: "mp3"
+                com.ljyh.mei.utils.DownloadManager.enqueue(
+                    context = context,
+                    songs = listOf(
+                        com.ljyh.mei.playback.SongDownloadInfo(
+                            songId = metadata.id.toString(),
+                            url = url,
+                            songTitle = metadata.title,
+                            songArtist = metadata.artists.map { it.name },
+                            songAlbum = metadata.album.title,
+                            songCover = metadata.coverUrl,
+                            duration = metadata.duration,
+                            fileType = ext,
+                            quality = "original",
+                        )
+                    ),
+                    playlistName = "单曲下载",
+                    downloadPath = downloadPath,
+                )
+                android.widget.Toast.makeText(context, "已添加到下载队列", android.widget.Toast.LENGTH_SHORT).show()
+                return@launch
             }
 
+            val quality = requestedQuality ?: MusicQuality.EXHIGH
             val result = playlistRepository.getSongUrlV1(
                 ids = listOf(metadata.id.toString()),
                 quality = quality

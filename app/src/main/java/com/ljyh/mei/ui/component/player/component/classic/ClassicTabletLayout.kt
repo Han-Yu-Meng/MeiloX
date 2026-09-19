@@ -192,22 +192,9 @@ fun ClassicTabletLayout(
                         .fillMaxSize()
                         .padding(horizontal = PlayerHorizontalPadding),
                     onClick = {
-                        mediaMetadata?.let {
-                            if (overlayHandler.currentOverlayValue is OverlayState.None) {
-                                stateContainer.playerViewModel.searchQQSong(it.title)
-                                overlayHandler.showQQMusicSelection(
-                                    mediaMetadata = it
-                                )
-                            }
-                        }
+                        // 已移除：点击歌词搜索 QQ 音乐
                     },
-                    onLongClick = { source ->
-                        if (source == LyricSource.QQMusic && mediaMetadata != null) {
-                            stateContainer.playerViewModel.deleteSongById(id = mediaMetadata!!.id.toString())
-                            Toast.makeText(context, "已删除QQ音乐歌词", Toast.LENGTH_SHORT)
-                                .show()
-                        }
-                    },
+                    onLongClick = { _ -> },
                     controlsVisible = stateContainer.controlsVisible,
                     onToggleControls = {},
                 )

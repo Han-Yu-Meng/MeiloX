@@ -143,6 +143,19 @@ fun MusetagHomeScreen() {
             }
         }
 
+        if (likedSongs.isNotEmpty() || MusetagStore.playlists().isNotEmpty()) {
+            item("playlists") {
+                MusetagPlaylistSection(
+                    onOpen = { id ->
+                        Screen.PlayList.navigate(navController) { addPath(encodeMusetagId(id)) }
+                    },
+                    onOpenAll = {
+                        Screen.PlayList.navigate(navController) { addPath("__all__") }
+                    },
+                )
+            }
+        }
+
         if (likedSongs.isNotEmpty()) {
             item("liked_songs_title") {
                 SectionTitle(

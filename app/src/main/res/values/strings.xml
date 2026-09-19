@@ -31,6 +31,13 @@
     <string name="musetag_collapse">收起</string>
     <string name="musetag_hot_songs">热门单曲</string>
     <string name="musetag_all_songs_fmt">全部 %1$d 首歌曲</string>
+    <string name="musetag_all_albums_fmt">全部 %1$d 张专辑</string>
+    <string name="musetag_expand_all">展开全部</string>
+    <string name="musetag_playlists">歌单</string>
+    <string name="musetag_new_playlist">新建歌单</string>
+    <string name="musetag_add_songs">添加歌曲</string>
+    <string name="musetag_rename_playlist">重命名歌单</string>
+    <string name="musetag_done">完成</string>
     <string name="artist_follow">Follow</string>
     <string name="artist_following">Following</string>
     <string name="artist_unavailable_title">Artist unavailable</string>

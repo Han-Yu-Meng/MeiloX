@@ -53,6 +53,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.ljyh.mei.R
 import com.ljyh.mei.data.model.MediaMetadata
@@ -92,20 +93,6 @@ fun decodeMusetagId(raw: String): String {
         if (decoded.isNotEmpty()) return String(decoded, Charsets.UTF_8)
     }
     return runCatching { URLDecoder.decode(raw, "UTF-8") }.getOrDefault(raw)
-}
-
-private fun buildMusetagQueue(songs: List<MusetagSong>, startIndex: Int = 0, title: String?): ListQueue? {
-    if (songs.isEmpty()) return null
-    val items = songs.map { song ->
-        val meta = MusetagStore.toMediaMetadata(song)
-        meta.id.toString() to meta.toMediaItem()
-    }
-    return ListQueue(
-        id = "musetag_${title.orEmpty()}_${System.currentTimeMillis()}",
-        title = title,
-        items = items,
-        startIndex = startIndex.coerceIn(0, items.lastIndex),
-    )
 }
 
 @Composable
@@ -220,6 +207,7 @@ fun MusetagArtistScreen(encodedId: String) {
     val navController = LocalNavController.current
     val context = LocalContext.current
     val playerConnection = LocalPlayerConnection.current ?: return
+    val scope = rememberCoroutineScope()
 
     var artistName by remember { mutableStateOf("") }
     var avatarUrl by remember { mutableStateOf<String?>(null) }
@@ -253,7 +241,7 @@ fun MusetagArtistScreen(encodedId: String) {
     }
 
     fun playSongs(list: List<MusetagSong>, start: Int) {
-        val q = buildMusetagQueue(list, start, artistName) ?: return
+        val q = musetagQueueOf(list, start, artistName) ?: return
         playerConnection.playQueue(q)
     }
 
@@ -270,6 +258,11 @@ fun MusetagArtistScreen(encodedId: String) {
                 contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
             ) {
                 item("hero") {
+                    var followed by remember(artistName) {
+                        mutableStateOf(
+                            MusetagStore.isArtistLiked(artistId)
+                        )
+                    }
                     MusetagArtistHero(
                         name = artistName,
                         avatarUrl = avatarUrl,
@@ -278,7 +271,13 @@ fun MusetagArtistScreen(encodedId: String) {
                         description = desc,
                         descExpanded = descExpanded,
                         onToggleDesc = { descExpanded = !descExpanded },
-                        onPlayAll = { playSongs(songs, 0) },
+                        isFollowed = followed,
+                        onFollowClick = {
+                            scope.launch {
+                                val next = MusetagStore.toggleArtistLike(artistId)
+                                followed = next
+                            }
+                        },
                     )
                 }
 
@@ -297,7 +296,7 @@ fun MusetagArtistScreen(encodedId: String) {
                         onClick = {
                             playerConnection.onTrackClicked(
                                 trackId = meta.id.toString(),
-                                buildQueue = { buildMusetagQueue(hotSongs, hotSongs.indexOfFirst { it.id == song.id }, artistName) },
+                                buildQueue = { musetagQueueOf(hotSongs, hotSongs.indexOfFirst { it.id == song.id }, artistName) },
                             )
                         },
                         onMoreClick = null,
@@ -309,7 +308,11 @@ fun MusetagArtistScreen(encodedId: String) {
                         IosListRow(
                             title = stringResource(R.string.musetag_all_songs_fmt, songs.size),
                             modifier = Modifier.padding(horizontal = 6.dp),
-                            onClick = { playSongs(songs, 0) },
+                            onClick = {
+                                Screen.ArtistSongs.navigate(navController) {
+                                    addPath(encodeMusetagId(artistId))
+                                }
+                            },
                             trailing = {
                                 SfIcon(
                                     "chevron.forward",
@@ -349,6 +352,26 @@ fun MusetagArtistScreen(encodedId: String) {
                             }
                         }
                     }
+                    item("all_albums") {
+                        IosListRow(
+                            title = stringResource(R.string.musetag_all_albums_fmt, albums.size),
+                            modifier = Modifier.padding(horizontal = 6.dp),
+                            onClick = {
+                                Screen.MusetagArtistAlbums.navigate(navController) {
+                                    addPath(encodeMusetagId(artistId))
+                                }
+                            },
+                            trailing = {
+                                SfIcon(
+                                    "chevron.forward",
+                                    null,
+                                    modifier = Modifier.padding(start = 8.dp),
+                                    size = 12.dp,
+                                    tint = LocalGlassColors.current.secondaryContent,
+                                )
+                            },
+                        )
+                    }
                 }
 
                 if (songs.isEmpty() && albums.isEmpty() && artistName.isBlank()) {
@@ -374,9 +397,11 @@ private fun MusetagArtistHero(
     description: String?,
     descExpanded: Boolean,
     onToggleDesc: () -> Unit,
-    onPlayAll: () -> Unit,
+    isFollowed: Boolean,
+    onFollowClick: () -> Unit,
 ) {
     val bgColor = MaterialTheme.colorScheme.background
+    val scope = rememberCoroutineScope()
     Column(modifier = Modifier.fillMaxWidth()) {
         Box(
             modifier = Modifier
@@ -447,31 +472,46 @@ private fun MusetagArtistHero(
             }
         }
 
-        Row(
+        // 关注 + 简介：对齐原版 ArtistScreen Body
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
+                .padding(horizontal = 20.dp),
         ) {
-            TextButton(onClick = onPlayAll, enabled = songCount > 0) {
-                Text(stringResource(R.string.musetag_play_all), fontWeight = FontWeight.SemiBold)
+            com.ljyh.mei.ui.glass.GlassButton(
+                onClick = onFollowClick,
+                emphasis = if (isFollowed) com.ljyh.mei.ui.glass.GlassEmphasis.Prominent
+                else com.ljyh.mei.ui.glass.GlassEmphasis.Regular,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp, bottom = 16.dp),
+            ) {
+                Text(
+                    stringResource(
+                        if (isFollowed) R.string.artist_following else R.string.artist_follow
+                    ),
+                    style = MaterialTheme.typography.labelLarge,
+                )
             }
-        }
 
-        if (!description.isNullOrBlank()) {
-            Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+            if (!description.isNullOrBlank()) {
                 Text(
                     text = description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
+                    lineHeight = 20.sp,
                     maxLines = if (descExpanded) Int.MAX_VALUE else 3,
                     overflow = TextOverflow.Ellipsis,
                 )
-                TextButton(onClick = onToggleDesc) {
-                    Text(
-                        if (descExpanded) stringResource(R.string.musetag_collapse)
-                        else stringResource(R.string.musetag_show_all),
-                    )
-                }
+                Text(
+                    text = if (descExpanded) stringResource(R.string.musetag_collapse)
+                    else stringResource(R.string.musetag_expand_all),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .padding(top = 4.dp, bottom = 8.dp)
+                        .clickable(onClick = onToggleDesc),
+                )
             }
         }
     }

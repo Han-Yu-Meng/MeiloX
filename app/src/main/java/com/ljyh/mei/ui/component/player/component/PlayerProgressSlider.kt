@@ -228,14 +228,6 @@ fun PlayerProgressSlider(
                 overflow = TextOverflow.Ellipsis,
             )
 
-            PlayerQualityDropdown(
-                quality = musicQuality,
-                onQualitySelected = { playerConnection?.changeQuality(it) },
-                style = timeTextStyle,
-                color = Color.White.copy(alpha = 0.8f),
-            )
-
-
             Text(
                 text = if (duration > 0) makeTimeString(duration) else "-:--",
                 style = timeTextStyle,
