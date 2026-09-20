@@ -60,6 +60,10 @@ fun NavGraphBuilder.navigationBuilder(
     navController: NavHostController,
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
+    composable(Screen.MusetagSongList.route) {
+        com.ljyh.mei.ui.screen.musetag.MusetagSongListScreen()
+    }
+
     composable(Screen.Home.route) {
         HomeHubScreen()
     }
@@ -384,6 +388,7 @@ fun navigationEntry(
     isNavigationTab: Boolean = false,
 ) {
     when {
+        route == Screen.MusetagSongList.route -> com.ljyh.mei.ui.screen.musetag.MusetagSongListScreen()
         route == Screen.Home.route -> HomeHubScreen()
         route == Screen.Library.route -> LibraryScreen(isNavigationTab = isNavigationTab)
         route.startsWith("${Screen.LibraryCategory.route}/") -> {

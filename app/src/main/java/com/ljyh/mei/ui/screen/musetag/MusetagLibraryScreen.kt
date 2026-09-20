@@ -61,7 +61,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class MusetagTab { Songs, Albums, Artists, Playlists }
+enum class MusetagTab { Songs, Albums, Artists }
 
 private const val PAGE_SIZE = 60
 
@@ -110,7 +110,6 @@ fun MusetagLibraryScreen() {
                 MusetagTab.Songs -> MusetagStore.librarySongsSorted()
                 MusetagTab.Albums -> emptyList()
                 MusetagTab.Artists -> emptyList()
-                MusetagTab.Playlists -> emptyList()
             }
         }
     }
@@ -190,7 +189,6 @@ fun MusetagLibraryScreen() {
                             MusetagTab.Songs -> stringResource(R.string.musetag_songs)
                             MusetagTab.Albums -> stringResource(R.string.musetag_albums)
                             MusetagTab.Artists -> stringResource(R.string.musetag_artists)
-                            MusetagTab.Playlists -> stringResource(R.string.musetag_playlists)
                         },
                         color = if (tab == t) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -240,7 +238,6 @@ fun MusetagLibraryScreen() {
                     }
                 }
             }
-            tab == MusetagTab.Playlists -> MusetagPlaylistsScreen()
             tab == MusetagTab.Albums -> LazyColumn(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),

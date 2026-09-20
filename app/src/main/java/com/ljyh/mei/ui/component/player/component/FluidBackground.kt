@@ -5,10 +5,12 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Build
 import android.view.PixelCopy
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -124,10 +126,8 @@ fun FluidBackground(
         }?.asImageBitmap()
     }
 
-    // 2. 组装当前需要传递给 View 的所有状态
-    // 强制静态：暂停/播放都不做 mesh 动画与像素拷贝，消除闪烁
+    // 2. 状态：静态背景仍渲染封面，但不循环动画/采样
     val shouldAnimate = false
-    val forceStatic = true
     val pixelCopyHandler = remember { Handler(Looper.getMainLooper()) }
     val captureBuffers = remember { arrayOfNulls<Bitmap>(3) }
     val captureState = remember { IntArray(3) }
@@ -144,22 +144,25 @@ fun FluidBackground(
         view.setPlaying(false)
     }
 
-    LaunchedEffect(meshView, lifecycleStarted) {
-        meshView?.setHostStarted(lifecycleStarted)
+    // 静态封面背景仍需要 GL 绘制；仅禁止持续动画
+    // 旋转/回到前台时重新 setAlbum + setRenderingRequested，避免背景变黑
+    LaunchedEffect(meshView, backgroundActive, lifecycleStarted, albumBitmap) {
+        val view = meshView ?: return@LaunchedEffect
+        view.setHostStarted(lifecycleStarted)
+        view.setStaticMode(true)
+        view.setPlaying(false)
+        view.setRenderingRequested(backgroundActive)
+        albumBitmap?.let { view.setAlbum(it) }
     }
 
-    LaunchedEffect(meshView, backgroundActive) {
-        meshView?.setRenderingRequested(backgroundActive && !forceStatic)
-    }
-
-    // 静态背景：只做一次 backdrop 采样，之后停止，避免暂停时持续闪烁
+    // 静态背景：采样几次 backdrop 供玻璃层使用
     LaunchedEffect(meshView, backdropFrame, albumBitmap, backgroundActive) {
         if (!backgroundActive) return@LaunchedEffect
         val view = meshView ?: return@LaunchedEffect
         val target = backdropFrame ?: return@LaunchedEffect
-        delay(300)
+        delay(120)
         var attempts = 0
-        while (isActive && attempts < 8) {
+        while (isActive && attempts < StaticBackdropCaptureAttempts) {
             val sourceWidth = view.width
             val sourceHeight = view.height
             if (view.isAttachedToWindow && sourceWidth > 0 && sourceHeight > 0) {
@@ -192,13 +195,33 @@ fun FluidBackground(
                 }
                 attempts++
             }
-            delay(200)
+            delay(80)
+        }
+        // 采样失败时用处理过的封面作 backdrop，避免玻璃层空白
+        if (target.value == null) {
+            albumBitmap?.let { bmp ->
+                target.value = AlbumTextureProcessor.process(bmp).asImageBitmap()
+            }
         }
     }
 
     // 3. 去掉过于严格的版本限制 (只要设备存在就能初始化，低端机 GLES 3.0 兼容性极好)
     // 如果你想绝对保险，可以写 >= Build.VERSION_CODES.LOLLIPOP (21)
     Box(modifier.fillMaxSize()) {
+        // Compose 侧静态封面兜底：即使 mesh 未及时绘制，也能看到封面背景
+        val fallbackFrame = albumBitmap?.asImageBitmap()
+        if (fallbackFrame != null && backdropFrame?.value == null) {
+            androidx.compose.foundation.Image(
+                bitmap = fallbackFrame,
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(
+                    Color.Black.copy(alpha = 0.35f),
+                    androidx.compose.ui.graphics.BlendMode.Darken,
+                ),
+            )
+        }
         // This empty Compose node owns the recording coordinates. Its custom Backdrop draw
         // reads only [backdropFrame], so the native GL Surface is never re-drawn or re-clipped.
         Box(
@@ -212,28 +235,23 @@ fun FluidBackground(
                 MeshBackgroundView(ctx).apply {
                     meshView = this
                     this.alpha = alpha.coerceIn(0f, 1f)
-                    // 初始化时的默认值
                     setFlowSpeed(flowSpeed)
                     setRenderScale(renderScale)
                     setSubdivision(subdivision)
                     setStaticMode(true)
                     setPlaying(false)
-                    setRenderingRequested(false)
-                    setRenderScale(renderScale)
-                    setSubdivision(subdivision)
-                    setStaticMode(staticMode)
-                    setPlaying(shouldAnimate)
                     setPreserveEGLContextOnPause(true)
                     setHostStarted(lifecycleStarted)
-                    setRenderingRequested(backgroundActive)
+                    setRenderingRequested(true)
                 }
             },
             update = { view ->
-                // GLSurfaceView owns a native Surface; driving the View alpha avoids a bright
-                // first frame escaping a Compose graphics layer during sheet expansion.
                 view.alpha = alpha.coerceIn(0f, 1f)
-
-                view.updateVolume(bass * volumeScale)
+                view.updateVolume(0f)
+                view.setStaticMode(true)
+                view.setPlaying(false)
+                view.setRenderingRequested(backgroundActive)
+                albumBitmap?.let { view.setAlbum(it) }
             },
             modifier = Modifier.fillMaxSize(),
         )

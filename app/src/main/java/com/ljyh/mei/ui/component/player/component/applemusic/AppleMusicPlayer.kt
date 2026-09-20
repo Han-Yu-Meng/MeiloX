@@ -487,7 +487,11 @@ fun AppleMusicPlayer(
                                 isPlaying = isPlaying,
                                 playbackState = playbackState,
                                 playerConnection = stateContainer.playerConnection,
-                                onLyricClick = { showLyrics = !showLyrics },
+                                onLyricClick = {
+                                val hasValidLyrics = lyricLine.lyricLine.lines.isNotEmpty() &&
+                                    lyricLine.source != com.ljyh.mei.ui.model.LyricSource.Empty
+                                if (hasValidLyrics) showLyrics = !showLyrics
+                            },
                                 onPlaylistClick = { overlayHandler.showPlaylist() },
                                 onSleepTimerClick = { overlayHandler.showSleepTimer() },
                                 onAddToPlaylistClick = {
@@ -542,7 +546,11 @@ fun AppleMusicPlayer(
                         if (!state.isExpanded) {
                             state.expandSoft()
                         } else {
-                            showLyrics = !showLyrics
+                            // 无有效歌词时不打开歌词页
+                            val hasValidLyrics = lyricLine.lyricLine.lines.isNotEmpty() &&
+                                lyricLine.source != com.ljyh.mei.ui.model.LyricSource.Empty &&
+                                lyricLine.source != com.ljyh.mei.ui.model.LyricSource.Loading
+                            if (hasValidLyrics) showLyrics = !showLyrics
                         }
                     }
                     .background(MaterialTheme.colorScheme.surfaceVariant)
